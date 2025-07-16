@@ -1,3 +1,7 @@
+# RUN WITH: 
+# caffeinate -i python train.py
+# python -m src.embedding
+
 import torch
 import cebra
 import mat73
@@ -13,21 +17,15 @@ import os
 import platform
 import subprocess
 import sys
-if platform.system() == "Darwin":
-    print("⚠️  Make sure you're using `caffeinate -i python train.py` to prevent sleep!")
 
 from src.config import (
-    DATA_ROOT, NEURAL_PATH, EMOTION_PATH, MODEL_WEIGHTS_PATH, NEURAL_TENSOR_PATH, 
-    EMOTION_TENSOR_PATH, EMBEDDING_PATH, BEHAVIOR_INDICES, TIME_INDICES, N_LATENTS
+    NEURAL_PATH, EMOTION_PATH, MODEL_WEIGHTS_PATH, NEURAL_TENSOR_PATH, 
+    EMOTION_TENSOR_PATH, BEHAVIOR_INDICES, TIME_INDICES, N_LATENTS
 )
 
-
-neural_path = DATA_ROOT / "nrcRF_calc_Stim_StimNum_5_Nr_1_msBW_1000_movHeldOut_1.mat"
-emotion_path = DATA_ROOT / "nrcRF_calc_Resp_chan_1_movHeldOut_1.mat"
-
 # === Load Data ===
-neural_array = mat73.loadmat(neural_path)['stim'].T
-emotion_array = scipy.io.loadmat(emotion_path)['resp'].flatten()
+neural_array = mat73.loadmat(NEURAL_PATH)['stim'].T
+emotion_array = scipy.io.loadmat(EMOTION_PATH)['resp'].flatten()
 
 neural_tensor = torch.tensor(neural_array, dtype=torch.float32)
 emotion_tensor = torch.tensor(emotion_array, dtype=torch.float32).unsqueeze(1)
@@ -42,22 +40,22 @@ print("neural_tensor shape:", neural_tensor.shape)
 datasets = DatasetxCEBRA(neural=neural_tensor, position=emotion_tensor)
 
 # === Loader ===
-batch_size = 512
+batch_size = 512 #2500 have good performance
 num_steps = 1000
 n_latents = 20
-behavior_indices = (0, 10) # The embedding[:, 0:9] portion will be trained using emotion contrastive loss (e.g., close if same emotion).
-time_indices = (10, 20) #The embedding[:, 9:18] portion will be trained using time contrastive loss (e.g., close if nearby in time).
+behavior_indices = BEHAVIOR_INDICES # The embedding[:, 0:9] portion will be trained using emotion contrastive loss (e.g., close if same emotion).
+time_indices = TIME_INDICES #The embedding[:, 9:18] portion will be trained using time contrastive loss (e.g., close if nearby in time).
 loader = ContrastiveMultiObjectiveLoader(dataset=datasets, batch_size=batch_size, num_steps=num_steps)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # === Config ===
 config = MultiObjectiveConfig(loader)
-config.set_slice(*behavior_indices)
+config.set_slice(*BEHAVIOR_INDICES)
 config.set_loss("FixedCosineInfoNCE", temperature=1.0)
 config.set_distribution("time_delta", time_delta=1, label_name="position")
 config.push()
 
-config.set_slice(*time_indices)
+config.set_slice(*TIME_INDICES)
 config.set_loss("FixedCosineInfoNCE", temperature=1.0)
 config.set_distribution("time", time_offset=10)
 config.push()
@@ -69,7 +67,7 @@ feature_ranges = config.feature_ranges
 # === Model ===
 # Loader, prepare patches for training
 neural_model = init_model(name="offset10-model", num_neurons=datasets.neural.shape[1], 
-                          num_units=256, num_output=n_latents).to(device)
+                          num_units=256, num_output=N_LATENTS).to(device)
 
 # Assuming all datasets have the same configuration, configure using the first one
 datasets.configure_for(neural_model)

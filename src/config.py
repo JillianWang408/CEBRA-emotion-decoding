@@ -26,8 +26,9 @@ EMBEDDING_PATH = MODEL_DIR / "embedding.pt"
 
 # === Embedding dimensions ===
 BEHAVIOR_INDICES = (0, 10)
-TIME_INDICES = slice(10, 20)
+TIME_INDICES = (10, 20)
 N_LATENTS = 20
+N_ELECTRODES = 40
 
 # === Emotion label mapping ===
 EMOTION_MAP = {

@@ -1,16 +1,23 @@
+# RUN WITH: python -m src.embedding
+
 import torch
 from pathlib import Path
 import json
 from cebra.models import init as init_model
+from cebra.data import DatasetxCEBRA
+from src.config import (NEURAL_TENSOR_PATH, EMOTION_TENSOR_PATH)
+
 
 # === Load data ===
 neural_tensor = torch.load(NEURAL_TENSOR_PATH)
 emotion_tensor = torch.load(EMOTION_TENSOR_PATH)
 
 # === Create embedding dataset ===
-datasets = TensorDataset(neural=neural_tensor, continuous=emotion_tensor)
+datasets = DatasetxCEBRA(neural=neural_tensor, continuous=emotion_tensor)
 model = init_model(name="offset10-model", num_neurons=neural_tensor.shape[1], num_units=256, num_output=20)
-model.load_state_dict(torch.load("models/xcebra_weights.pt"))
+
+state_dict = torch.load("models/xcebra_weights.pt")
+
 model.eval()
 
 datasets.configure_for(model)

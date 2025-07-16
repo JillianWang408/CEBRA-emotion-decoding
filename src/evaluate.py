@@ -1,3 +1,4 @@
+# RUN WITH: python -m src.evaluate
 import torch
 import numpy as np
 from sklearn.linear_model import LinearRegression
@@ -12,12 +13,14 @@ from src.config import EMBEDDING_PATH, EMOTION_TENSOR_PATH, BEHAVIOR_INDICES, TI
 # === Load Data ===
 embedding = torch.load(EMBEDDING_PATH).numpy()
 emotion_tensor = torch.load(EMOTION_TENSOR_PATH)
+print("Embedding shape:", embedding.shape)
+
 full_labels = emotion_tensor.squeeze().cpu().numpy().astype(int)
 y = full_labels
 
 # === Slice Embeddings ===
 X_behavior = embedding[:, slice(*BEHAVIOR_INDICES)]
-X_time = embedding[:, TIME_INDICES]
+X_time = embedding[:,  slice(*TIME_INDICES)]
 
 # === R² Linear Regression ===
 linear_model_time = LinearRegression()
@@ -44,11 +47,11 @@ def evaluate_knn(X, y, model):
         scores.append(accuracy_score(y_test, y_pred))
     return sum(scores) / len(scores)
 
-knn_time_acc = evaluate_knn(X_time, y, knn_model_time)
-knn_behavior_acc = evaluate_knn(X_behavior, y, knn_model_behavior)
+avg_knn_time = evaluate_knn(X_time, y, knn_model_time)
+avg_knn_behavior = evaluate_knn(X_behavior, y, knn_model_behavior)
 
-print(f"[KNN] Time contrastive       : {knn_time_acc:.2f}")
-print(f"[KNN] Behavior contrastive   : {knn_behavior_acc:.2f}")
+print(f"[KNN] Time contrastive       : {avg_knn_time:.2f}")
+print(f"[KNN] Behavior contrastive   : {avg_knn_behavior:.2f}")
 
 # === Plot Embeddings ===
 fig = plt.figure(figsize=(20, 15))
