@@ -8,8 +8,10 @@ This project uses xCEBRA to decode emotional states from ECoG data by learning c
 
 ```bash
 git clone https://github.com/JillianWang408/emotion-decoding.git 
-#You can specify a different directory name like this:
+
+#OR you can specify a different directory name like this:
 git clone https://github.com/JillianWang408/emotion-decoding.git my-folder-path
+
 cd emotion-decoding  # ✅ Change this if your root folder is located elsewhere
 ```
 
@@ -47,6 +49,7 @@ pip install -r requirements.txt
 - `models/`: saved .pt model files
 - `data/`: ECoG and label files (.mat)
 - `notebooks/`: optional Colab/Jupyter files
+- `attibution_outputs/`: output images from running the attribution.py module
 
 ## How to run .py files under src
 Copy these command line into terminal when you open each file
