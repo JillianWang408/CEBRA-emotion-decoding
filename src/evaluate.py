@@ -1,53 +1,100 @@
-# src/evaluate.py
 import torch
-import argparse
 import numpy as np
-from sklearn.model_selection import cross_val_predict, StratifiedKFold
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import accuracy_score
+from sklearn.model_selection import TimeSeriesSplit
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 
-# === CLI ===
-parser = argparse.ArgumentParser()
-parser.add_argument("--model_path", type=str, required=True, help="Path to saved model weights (.pt)")
-parser.add_argument("--data_path", type=str, default="./data/neural_data.mat", help="Path to neural data (.mat)")
-parser.add_argument("--label_path", type=str, default="./data/emotion_labels.mat", help="Path to label data (.mat)")
-args = parser.parse_args()
+from src.config import EMBEDDING_PATH, EMOTION_TENSOR_PATH, BEHAVIOR_INDICES, TIME_INDICES, EMOTION_MAP
 
 # === Load Data ===
-import mat73, scipy.io
-neural_array = mat73.loadmat(args.data_path)['stim'].T
-emotion_array = scipy.io.loadmat(args.label_path)['resp'].flatten()
+embedding = torch.load(EMBEDDING_PATH).numpy()
+emotion_tensor = torch.load(EMOTION_TENSOR_PATH)
+full_labels = emotion_tensor.squeeze().cpu().numpy().astype(int)
+y = full_labels
 
-neural_tensor = torch.tensor(neural_array, dtype=torch.float32)
-emotion_tensor = torch.tensor(emotion_array, dtype=torch.int64)  # assuming labels are integers
+# === Slice Embeddings ===
+X_behavior = embedding[:, slice(*BEHAVIOR_INDICES)]
+X_time = embedding[:, TIME_INDICES]
 
-# === Load Model ===
-from cebra.models import init as init_model
-model = init_model(name="offset10-model", num_neurons=neural_tensor.shape[1], num_units=256, num_output=20)
-model.load_state_dict(torch.load(args.model_path, map_location='cpu'))
-model.eval()
+# === R² Linear Regression ===
+linear_model_time = LinearRegression()
+R2_time = linear_model_time.fit(X_time, y).score(X_time, y)
 
-# === Format Input ===
-if neural_tensor.dim() == 2:
-    neural_tensor = neural_tensor.unsqueeze(1).repeat(1, 2, 1).permute(0, 2, 1)  # shape: [N, input, time]
-    if neural_tensor.shape[2] < 3:
-        pad = neural_tensor[:, :, :1].expand(-1, -1, 3 - neural_tensor.shape[2])
-        neural_tensor = torch.cat([neural_tensor, pad], dim=2)
+linear_model_behavior = LinearRegression()
+R2_behavior = linear_model_behavior.fit(X_behavior, y).score(X_behavior, y)
 
-# === Get Embeddings ===
-with torch.no_grad():
-    embeddings = model(neural_tensor).cpu().numpy()
+print(f"[R²] Time contrastive       : {R2_time:.2f}")
+print(f"[R²] Behavior contrastive   : {R2_behavior:.2f}")
 
-# === KNN Evaluation ===
-y_true = emotion_tensor.numpy()
-cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-y_pred = cross_val_predict(KNeighborsClassifier(n_neighbors=5), embeddings, y_true, cv=cv)
+# === KNN Classification ===
+tscv = TimeSeriesSplit(n_splits=5)
+knn_model_time = KNeighborsClassifier(n_neighbors=5)
+knn_model_behavior = KNeighborsClassifier(n_neighbors=5)
+
+def evaluate_knn(X, y, model):
+    scores = []
+    for train_idx, test_idx in tscv.split(X):
+        X_train, X_test = X[train_idx], X[test_idx]
+        y_train, y_test = y[train_idx], y[test_idx]
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        scores.append(accuracy_score(y_test, y_pred))
+    return sum(scores) / len(scores)
+
+knn_time_acc = evaluate_knn(X_time, y, knn_model_time)
+knn_behavior_acc = evaluate_knn(X_behavior, y, knn_model_behavior)
+
+print(f"[KNN] Time contrastive       : {knn_time_acc:.2f}")
+print(f"[KNN] Behavior contrastive   : {knn_behavior_acc:.2f}")
+
+# === Plot Embeddings ===
+fig = plt.figure(figsize=(20, 15))
+idx0_behavior, idx1_behavior, idx2_behavior = 0, 1, 2
+idx0_time, idx1_time, idx2_time = 4, 5, 6
+min_, max_ = 0, 10000
+
+ax1 = fig.add_subplot(121, projection='3d')
+scatter1 = ax1.scatter(embedding[:, idx0_time][min_:max_],
+                       embedding[:, idx1_time][min_:max_],
+                       embedding[:, idx2_time][min_:max_],
+                       c=emotion_tensor[min_:max_], s=1, cmap="tab10")
+ax1.set_title(f'embedding (time contrastive), KNN/R2: {avg_knn_time: .2f} / {R2_time: .2f}', y=1.0, pad=-10)
+ax1.set_axis_off()
+
+ax2 = fig.add_subplot(122, projection='3d')
+scatter2 = ax2.scatter(embedding[:, idx0_behavior][min_:max_],
+                       embedding[:, idx1_behavior][min_:max_],
+                       embedding[:, idx2_behavior][min_:max_],
+                       c=emotion_tensor[min_:max_], s=1, cmap="tab10")
+ax2.set_title(f'embedding (behavior contrastive), KNN/R2: {avg_knn_behavior: .2f} / {R2_behavior: .2f}', y=1.0, pad=-10)
+ax2.set_axis_off()
+
+plt.show()
 
 # === Confusion Matrix ===
-cm = confusion_matrix(y_true, y_pred)
-disp = ConfusionMatrixDisplay(confusion_matrix=cm)
-disp.plot(cmap="Blues")
-plt.title("Emotion Decoding Confusion Matrix")
-plt.tight_layout()
+# Use last split from TimeSeriesSplit
+for train_idx, test_idx in tscv.split(X_behavior):
+    pass  # will use the final split
+
+X_train, X_test = X_behavior[train_idx], X_behavior[test_idx]
+y_train, y_test = y[train_idx], y[test_idx]
+
+knn = KNeighborsClassifier(n_neighbors=5)
+knn.fit(X_train, y_train)
+y_pred = knn.predict(X_test)
+
+unique_labels = np.unique(y_test)
+filtered_emotion_labels = [EMOTION_MAP[i] for i in unique_labels]
+
+c_m = confusion_matrix(y_test, y_pred, labels=unique_labels)
+disp = ConfusionMatrixDisplay(confusion_matrix=c_m, display_labels=filtered_emotion_labels)
+fig, ax = plt.subplots(figsize=(10, 8))
+disp.plot(ax=ax, xticks_rotation=45, cmap='Blues')
+plt.title("Confusion Matrix - Emotion Classification")
 plt.show()
+
+print("Unique labels in test set:", unique_labels)
+print("Filtered emotion labels used in confusion matrix:", filtered_emotion_labels)

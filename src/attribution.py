@@ -1,51 +1,78 @@
-# src/attribution.py
-import torch
-import argparse
-import matplotlib.pyplot as plt
 import numpy as np
-from cebra.models.jacobian import compute_jacobian
-from cebra.models.jacobian_regularizer import compute_inverse_jacobian
-
-# === CLI ===
-parser = argparse.ArgumentParser()
-parser.add_argument("--model_path", type=str, required=True, help="Path to saved model weights (.pt)")
-parser.add_argument("--data_path", type=str, default="./data/neural_data.mat")
-args = parser.parse_args()
-
-# === Load Data ===
+import torch
+import matplotlib.pyplot as plt
+import cebra
+from config import NEURAL_PATH
 import mat73
-neural_array = mat73.loadmat(args.data_path)['stim'].T
-neural_tensor = torch.tensor(neural_array, dtype=torch.float32)
+import seaborn as sns
 
-# === Load Model ===
-from cebra.models import init as init_model
-model = init_model(name="offset10-model", num_neurons=neural_tensor.shape[1], num_units=256, num_output=20)
-model.load_state_dict(torch.load(args.model_path, map_location='cpu'))
-model.eval()
 
-# === Format Input ===
-if neural_tensor.dim() == 2:
-    neural_tensor = neural_tensor.unsqueeze(1).repeat(1, 2, 1).permute(0, 2, 1)  # shape: [N, input, time]
-    if neural_tensor.shape[2] < 3:
-        pad = neural_tensor[:, :, :1].expand(-1, -1, 3 - neural_tensor.shape[2])
-        neural_tensor = torch.cat([neural_tensor, pad], dim=2)
+def compute_and_plot_attribution(model):
+    # === Load Neural Data ===
+    emotion_tensor = torch.load(EMOTION_TENSOR_PATH)
+    neural_tensor.requires_grad_(True)
 
-# === Compute Jacobians ===
-with torch.no_grad():
-    jacobian = compute_jacobian(model, neural_tensor)
-    inv_jacobian = compute_inverse_jacobian(model, neural_tensor)
+    # === Attribution Method ===
+    model.split_outputs = False
+    method = cebra.attribution.init(
+        name="jacobian-based",
+        model=model,
+        input_data=neural_tensor,
+        output_dimension=model.num_output
+    )
+    result = method.compute_attribution_map()
 
-# === Visualize ===
-# Absolute mean Jacobian
-jf = jacobian
-jf_abs = torch.abs(jf)
-jf_mean = jf_abs.mean(dim=0).cpu().numpy()  # shape: [latent_dim, features]
+    # === Plot Per-Latent Heatmap ===
+    for key in ["jf", "jf-inv-svd"]:
+        jf = result[key].transpose(1, 2, 0)  # shape: [num_latents, num_neurons, time]
+        jf_mean = np.abs(jf).mean(-1)       # shape: [num_latents, num_neurons]
 
-plt.figure(figsize=(12, 6))
-plt.imshow(jf_mean, aspect='auto', cmap='viridis')
-plt.colorbar(label='Attribution Strength')
-plt.xlabel("Input Features")
-plt.ylabel("Latent Dimensions")
-plt.title("Jacobian Attribution Map")
-plt.tight_layout()
-plt.show()
+        for i in range(jf_mean.shape[0]):
+            plt.figure(figsize=(12, 1.5))
+            plt.imshow(jf_mean[i][None, :], cmap='viridis', aspect='auto')
+            plt.colorbar(label="Attribution Strength")
+            plt.yticks([0], [f"Latent {i}"])
+            plt.xticks(np.linspace(0, jf_mean.shape[1] - 1, 10).astype(int))
+            plt.xlabel("Neuron Index")
+            plt.title(f"Attribution Map for Latent Dimension {i} ({key})")
+            plt.tight_layout()
+            plt.show()
+
+    # === Summary Visualization ===
+    plt.matshow(np.abs(result['jf']).mean(0), aspect="auto")
+    plt.colorbar()
+    plt.title("Attribution map of JF")
+    plt.show()
+
+    plt.matshow(np.abs(result['jf-inv-svd']).mean(0), aspect="auto")
+    plt.colorbar()
+    plt.title("Attribution map of JFinv")
+    plt.show()
+
+    # === Diagnostics ===
+    top_inputs = result['jf'].mean(0).argsort()[:10]
+    print("Neural shape:", neural_tensor.shape)
+    print("Top input feature indices:", top_inputs)
+
+# === Convert to 40x40 electrode covariance map for each latent ===
+num_latents = jf.shape[0]
+num_electrodes = 40
+
+for i in range(num_latents):
+    jf_cov = jf[i].reshape(num_electrodes, num_electrodes)
+
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(
+        jf_cov,
+        cmap='viridis',
+        square=True,
+        cbar=True,
+        xticklabels=ELECTRODE_NAMES,
+        yticklabels=ELECTRODE_NAMES
+    )
+    plt.xticks(rotation=90)
+    plt.title(f"Latent Dimension {i} — Electrode Attribution Covariance")
+    plt.xlabel("Electrode")
+    plt.ylabel("Electrode")
+    plt.tight_layout()
+    plt.show()

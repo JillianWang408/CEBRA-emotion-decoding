@@ -1,4 +1,5 @@
 import torch
+import cebra
 import mat73
 import scipy.io
 from pathlib import Path
@@ -9,9 +10,20 @@ from cebra.models import init as init_model
 from cebra.models.jacobian_regularizer import JacobianReg
 import os
 
-data_root = Path("./data")
-neural_path = data_root / "neural_data.mat"
-emotion_path = data_root / "emotion_labels.mat"
+import platform
+import subprocess
+import sys
+if platform.system() == "Darwin":
+    print("⚠️  Make sure you're using `caffeinate -i python train.py` to prevent sleep!")
+
+from src.config import (
+    DATA_ROOT, NEURAL_PATH, EMOTION_PATH, MODEL_WEIGHTS_PATH, NEURAL_TENSOR_PATH, 
+    EMOTION_TENSOR_PATH, EMBEDDING_PATH, BEHAVIOR_INDICES, TIME_INDICES, N_LATENTS
+)
+
+
+neural_path = DATA_ROOT / "nrcRF_calc_Stim_StimNum_5_Nr_1_msBW_1000_movHeldOut_1.mat"
+emotion_path = DATA_ROOT / "nrcRF_calc_Resp_chan_1_movHeldOut_1.mat"
 
 # === Load Data ===
 neural_array = mat73.loadmat(neural_path)['stim'].T
@@ -20,20 +32,32 @@ emotion_array = scipy.io.loadmat(emotion_path)['resp'].flatten()
 neural_tensor = torch.tensor(neural_array, dtype=torch.float32)
 emotion_tensor = torch.tensor(emotion_array, dtype=torch.float32).unsqueeze(1)
 
+torch.save(neural_tensor, NEURAL_TENSOR_PATH)
+torch.save(emotion_tensor, EMOTION_TENSOR_PATH)
+
+print("Tensors saved to ./models/")
+print("neural_tensor shape:", neural_tensor.shape)
+
 # === Dataset Setup ===
-dataset = DatasetxCEBRA(neural=neural_tensor, position=emotion_tensor)
+datasets = DatasetxCEBRA(neural=neural_tensor, position=emotion_tensor)
 
 # === Loader ===
-loader = ContrastiveMultiObjectiveLoader(dataset=dataset, batch_size=512, num_steps=1000)
+batch_size = 512
+num_steps = 1000
+n_latents = 20
+behavior_indices = (0, 10) # The embedding[:, 0:9] portion will be trained using emotion contrastive loss (e.g., close if same emotion).
+time_indices = (10, 20) #The embedding[:, 9:18] portion will be trained using time contrastive loss (e.g., close if nearby in time).
+loader = ContrastiveMultiObjectiveLoader(dataset=datasets, batch_size=batch_size, num_steps=num_steps)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # === Config ===
 config = MultiObjectiveConfig(loader)
-config.set_slice(0, 10)
+config.set_slice(*behavior_indices)
 config.set_loss("FixedCosineInfoNCE", temperature=1.0)
 config.set_distribution("time_delta", time_delta=1, label_name="position")
 config.push()
 
-config.set_slice(10, 20)
+config.set_slice(*time_indices)
 config.set_loss("FixedCosineInfoNCE", temperature=1.0)
 config.set_distribution("time", time_offset=10)
 config.push()
@@ -43,28 +67,36 @@ criterion = config.criterion
 feature_ranges = config.feature_ranges
 
 # === Model ===
-model = init_model(name="offset10-model", num_neurons=neural_tensor.shape[1], num_units=256, num_output=20)
-regularizer = JacobianReg()
+# Loader, prepare patches for training
+neural_model = init_model(name="offset10-model", num_neurons=datasets.neural.shape[1], 
+                          num_units=256, num_output=n_latents).to(device)
 
-optimizer = torch.optim.Adam(list(model.parameters()) + list(criterion.parameters()), lr=3e-4)
+# Assuming all datasets have the same configuration, configure using the first one
+datasets.configure_for(neural_model)
 
-from cebra.solver import init as init_solver
-solver = init_solver(name="multiobjective-solver", model=model, feature_ranges=feature_ranges,
-                     criterion=criterion, optimizer=optimizer, regularizer=regularizer,
-                     renormalize=True, use_sam=False, tqdm_on=True)
+# Define Optimizer
+opt = torch.optim.Adam(list(neural_model.parameters()) + list(criterion.parameters()), lr=3e-4, weight_decay=0)
+
+regularizer = cebra.models.jacobian_regularizer.JacobianReg()
+
+#Create Solver (for actual training)
+solver = cebra.solver.init(name="multiobjective-solver", model=neural_model, feature_ranges=feature_ranges,
+                          regularizer=regularizer, renormalize=True, use_sam=False, criterion=criterion,
+                          optimizer=opt, tqdm_on=True).to(device)
 
 # === Regularizer scheduler ===
-scheduler = LinearRampUp(n_splits=2, step_to_switch_on_reg=250, step_to_switch_off_reg=500,
+weight_scheduler = LinearRampUp(n_splits=2, step_to_switch_on_reg=num_steps // 4, step_to_switch_off_reg=num_steps // 2,
                          start_weight=0.0, end_weight=0.1)
 
 # === Train ===
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 solver.to(device)
-solver.fit(loader=loader, valid_loader=None, scheduler_regularizer=scheduler)
+solver.fit(loader=loader, valid_loader=None, scheduler_regularizer=weight_scheduler)
 
-# === Save ===
+# Save trained model
+from pathlib import Path
+import torch
+
 output_path = Path("./models/xcebra_weights.pt")
 output_path.parent.mkdir(exist_ok=True, parents=True)
-torch.save(model.state_dict(), output_path)
+torch.save(solver.model.state_dict(), MODEL_WEIGHTS_PATH)
 print(f"Model saved to {output_path}")
-
