@@ -1,3 +1,4 @@
+# Requires python_version == 3.12
 cebra[integrations]==0.6.0a1
 ratinabox
 torch
