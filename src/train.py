@@ -1,6 +1,6 @@
-# RUN WITH: 
-# caffeinate -i python train.py
-# python -m src.embedding
+# RUN THESE TWO LINES TOGETHER: 
+# caffeinate -i python src/train.py
+# python -m src.train
 
 import torch
 import cebra
@@ -12,11 +12,6 @@ from cebra.solver import MultiObjectiveConfig
 from cebra.solver.schedulers import LinearRampUp
 from cebra.models import init as init_model
 from cebra.models.jacobian_regularizer import JacobianReg
-import os
-
-import platform
-import subprocess
-import sys
 
 from src.config import (
     NEURAL_PATH, EMOTION_PATH, MODEL_WEIGHTS_PATH, NEURAL_TENSOR_PATH, 
@@ -40,7 +35,7 @@ print("neural_tensor shape:", neural_tensor.shape)
 datasets = DatasetxCEBRA(neural=neural_tensor, position=emotion_tensor)
 
 # === Loader ===
-batch_size = 512 #2500 have good performance
+batch_size = 2500 #2500 have good performance
 num_steps = 1000
 n_latents = 20
 behavior_indices = BEHAVIOR_INDICES # The embedding[:, 0:9] portion will be trained using emotion contrastive loss (e.g., close if same emotion).
