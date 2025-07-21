@@ -1,5 +1,5 @@
 # RUN THESE TWO LINES TOGETHER: 
-# caffeinate -i python src/train.py
+# caffeinate -dimsu python src/train.py
 # python -m src.train
 
 import torch
@@ -87,7 +87,6 @@ solver.fit(loader=loader, valid_loader=None, scheduler_regularizer=weight_schedu
 
 # Save trained model
 from pathlib import Path
-import torch
 
 output_path = Path("./models/xcebra_weights.pt")
 output_path.parent.mkdir(exist_ok=True, parents=True)

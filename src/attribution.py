@@ -3,27 +3,25 @@
 import numpy as np
 import torch
 import seaborn as sns
-import cebra
-from cebra.models import init as init_model
-import os
-
 import matplotlib
 matplotlib.use('MacOSX') 
 import matplotlib.pyplot as plt
+import os
+import cebra
 
 from src.config import (
     EMOTION_TENSOR_PATH, NEURAL_TENSOR_PATH,
     N_LATENTS, N_ELECTRODES, ELECTRODE_NAMES, MODEL_WEIGHTS_PATH
 )
-
+from src.utils import load_fixed_cebra_model
 
 def compute_and_plot_attribution(model):
-    # === Load Neural Data ===
+    # === Load data ===
     emotion_tensor = torch.load(EMOTION_TENSOR_PATH)
     neural_tensor = torch.load(NEURAL_TENSOR_PATH)
     neural_tensor.requires_grad_(True)
 
-    # === Attribution Method ===
+    # === Attribution ===
     model.split_outputs = False
     method = cebra.attribution.init(
         name="jacobian-based",
@@ -36,7 +34,7 @@ def compute_and_plot_attribution(model):
     # === Create output folder ===
     os.makedirs("attribution_outputs", exist_ok=True)
 
-    # === Plot Per-Latent Heatmap + Electrode Covariance ===
+    # === Latent heatmaps ===
     for key in ["jf", "jf-inv-svd"]:
         jf = result[key].transpose(1, 2, 0)  # [latents, neurons, time]
         jf_mean = np.abs(jf).mean(-1)       # [latents, neurons]
@@ -52,8 +50,8 @@ def compute_and_plot_attribution(model):
             plt.tight_layout()
             plt.savefig(f"attribution_outputs/latent_{i}_{key}_heatmap.png")
             plt.close()
-        
-        # === 40x40 Electrode Covariance Plots ===
+
+        # === Electrode 40x40 grid heatmap ===
         if key == "jf":
             for i in range(N_LATENTS):
                 jf_cov = jf_mean[i].reshape(N_ELECTRODES, N_ELECTRODES)
@@ -75,7 +73,7 @@ def compute_and_plot_attribution(model):
                 plt.savefig(f"attribution_outputs/latent_{i}_electrode_covariance.png")
                 plt.close()
 
-    # === Summary Attribution Maps ===
+    # === Summary attribution maps ===
     plt.matshow(np.abs(result['jf']).mean(0), aspect="auto")
     plt.colorbar()
     plt.title("Attribution map of JF (mean over time)")
@@ -98,43 +96,5 @@ def compute_and_plot_attribution(model):
     print("Saved outputs in: ./attribution_outputs/")
 
 if __name__ == "__main__":
-    # === Load trained model
-    embedding_model = init_model(
-        name="offset10-model",
-        num_neurons=torch.load(NEURAL_TENSOR_PATH).shape[1],
-        num_units=256,
-        num_output=N_LATENTS
-    )
-    
-    # Load saved model weights
-    raw_state_dict = torch.load(MODEL_WEIGHTS_PATH, map_location="cpu")
-
-    # Fix nested "module." prefixes
-    fixed_state_dict = {}
-    fixed_state_dict = {}
-
-    for k, v in raw_state_dict.items():
-        # Remove top-level 'module.' if present
-        if k.startswith("module."):
-            k = k[len("module."):]
-
-        # Remove extra nested 'module.' inside keys
-        k = k.replace(".module.", ".")
-
-        # Fix specific nested keys
-        if k.startswith("net.2.0"):
-            k = k.replace("net.2.0", "net.2.module.0")
-        elif k.startswith("net.3.0"):
-            k = k.replace("net.3.0", "net.3.module.0")
-        elif k.startswith("net.4.0"):
-            k = k.replace("net.4.0", "net.4.module.0")
-
-        # Add the (possibly modified) key-value pair
-        fixed_state_dict[k] = v
-
-    # Load into model
-    embedding_model.load_state_dict(fixed_state_dict)
-    embedding_model.eval()
-
-    # === Run attribution
-    compute_and_plot_attribution(embedding_model)
+    model = load_fixed_cebra_model(MODEL_WEIGHTS_PATH, num_output=N_LATENTS)
+    compute_and_plot_attribution(model)

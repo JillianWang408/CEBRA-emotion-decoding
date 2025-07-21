@@ -50,13 +50,14 @@ pip install -r requirements.txt
 - `data/`: ECoG and label files (.mat)
 - `notebooks/`: optional Colab/Jupyter files
 - `attibution_outputs/`: output images from running the attribution.py module
+- `evaluation_outputs/`: embedding 3D visualization and confusion matrix
 
 ## How to run .py files under src
 Copy these command line into terminal when you open each file
 
 1. `train.py`: 
 ```bash
-caffeinate -i python train.py
+caffeinate -dimsu python train.py
 python -m src.train
 ```
 2. `embedding.py`: 
