@@ -5,7 +5,7 @@ from pathlib import Path
 import json
 from cebra.models import init as init_model
 from cebra.data import DatasetxCEBRA
-from src.config import (NEURAL_TENSOR_PATH, EMOTION_TENSOR_PATH, MODEL_WEIGHTS_PATH)
+from src.config import (NEURAL_TENSOR_PATH, EMOTION_TENSOR_PATH, MODEL_WEIGHTS_PATH, EMBEDDING_PATH)
 from src.utils import load_fixed_cebra_model
 
 
@@ -26,6 +26,5 @@ model.to(device)
 model.split_outputs = False
 
 embedding = model(data_input.to(device)).detach().cpu()
-torch.save(embedding, "models/embedding.pt")
+torch.save(embedding, EMBEDDING_PATH)
 print("Embedding shape:", embedding.shape)
-

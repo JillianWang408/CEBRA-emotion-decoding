@@ -11,11 +11,13 @@ import matplotlib.pyplot as plt
 
 from src.config import (
     EMBEDDING_PATH, EMOTION_TENSOR_PATH,
-    BEHAVIOR_INDICES, TIME_INDICES, EMOTION_MAP
+    BEHAVIOR_INDICES, TIME_INDICES, EMOTION_MAP,
+    EVALUATION_OUTPUT_DIR, EVALUATION_EMBEDDING_PLOT, EVALUATION_CONFUSION_PLOT
 )
 
 # === Setup ===
 os.makedirs("evaluation_outputs", exist_ok=True)
+EVALUATION_OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 
 # === Load Data ===
 embedding = torch.load(EMBEDDING_PATH).numpy()
@@ -82,9 +84,9 @@ scatter2 = ax2.scatter(embedding[:, idx0_behavior][min_:max_],
 ax2.set_title(f'embedding (behavior contrastive), KNN/R2: {avg_knn_behavior: .2f} / {R2_behavior: .2f}', y=1.0, pad=-10)
 ax2.set_axis_off()
 
-plt.savefig("evaluation_outputs/embedding_summary.png", dpi=300)
-plt.close(fig)
-print("Saved 3D embedding visualization to evaluation_outputs/embedding_summary.png")
+plt.savefig(EVALUATION_EMBEDDING_PLOT, dpi=300)
+plt.show()
+print(f"Saved 3D embedding visualization to {EVALUATION_EMBEDDING_PLOT}")
 
 # === Confusion Matrix ===
 # Use last split from TimeSeriesSplit
@@ -107,9 +109,9 @@ fig, ax = plt.subplots(figsize=(10, 8))
 disp.plot(ax=ax, xticks_rotation=45, cmap='Blues')
 plt.title("Confusion Matrix - Emotion Classification")
 
-plt.savefig("evaluation_outputs/confusion_matrix.png", dpi=300)
-plt.close(fig)
-print("Saved confusion matrix to evaluation_outputs/confusion_matrix.png")
+plt.savefig(EVALUATION_CONFUSION_PLOT, dpi=300)
+plt.show()
+print(f"Saved confusion matrix to {EVALUATION_CONFUSION_PLOT}")
 
 print("Unique labels in test set:", unique_labels)
 print("Filtered emotion labels used in confusion matrix:", filtered_emotion_labels)

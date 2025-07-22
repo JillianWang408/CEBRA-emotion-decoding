@@ -1,12 +1,10 @@
 # RUN THESE TWO LINES TOGETHER: 
-# caffeinate -dimsu python src/train.py
-# python -m src.train
+# caffeinate -dimsu python -m src.train
 
 import torch
 import cebra
 import mat73
 import scipy.io
-from pathlib import Path
 from cebra.data import DatasetxCEBRA, ContrastiveMultiObjectiveLoader
 from cebra.solver import MultiObjectiveConfig
 from cebra.solver.schedulers import LinearRampUp
@@ -28,14 +26,14 @@ emotion_tensor = torch.tensor(emotion_array, dtype=torch.float32).unsqueeze(1)
 torch.save(neural_tensor, NEURAL_TENSOR_PATH)
 torch.save(emotion_tensor, EMOTION_TENSOR_PATH)
 
-print("Tensors saved to ./models/")
+print("Tensors saved")
 print("neural_tensor shape:", neural_tensor.shape)
 
 # === Dataset Setup ===
 datasets = DatasetxCEBRA(neural=neural_tensor, position=emotion_tensor)
 
 # === Loader ===
-batch_size = 2500 #2500 have good performance
+batch_size = 512
 num_steps = 1000
 n_latents = 20
 behavior_indices = BEHAVIOR_INDICES # The embedding[:, 0:9] portion will be trained using emotion contrastive loss (e.g., close if same emotion).
@@ -86,9 +84,6 @@ solver.to(device)
 solver.fit(loader=loader, valid_loader=None, scheduler_regularizer=weight_scheduler)
 
 # Save trained model
-from pathlib import Path
-
-output_path = Path("./models/xcebra_weights.pt")
+output_path = MODEL_WEIGHTS_PATH
 output_path.parent.mkdir(exist_ok=True, parents=True)
-torch.save(solver.model.state_dict(), MODEL_WEIGHTS_PATH)
-print(f"Model saved to {output_path}")
+torch.save(solver.model.state_dict(), output_path)

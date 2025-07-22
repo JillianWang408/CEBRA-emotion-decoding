@@ -57,8 +57,7 @@ Copy these command line into terminal when you open each file
 
 1. `train.py`: 
 ```bash
-caffeinate -dimsu python train.py
-python -m src.train
+caffeinate -dimsu python -m src.train
 ```
 2. `embedding.py`: 
 ```bash
