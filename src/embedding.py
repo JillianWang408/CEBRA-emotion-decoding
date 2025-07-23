@@ -2,29 +2,34 @@
 
 import torch
 from pathlib import Path
-import json
-from cebra.models import init as init_model
 from cebra.data import DatasetxCEBRA
-from src.config import (NEURAL_TENSOR_PATH, EMOTION_TENSOR_PATH, MODEL_WEIGHTS_PATH, EMBEDDING_PATH, N_LATENTS)
+from src.config import (
+    NEURAL_TENSOR_PATH, EMOTION_TENSOR_PATH, 
+    MODEL_WEIGHTS_PATH, EMBEDDING_PATH, N_LATENTS
+)
 from src.utils import load_fixed_cebra_model
 
+def main():
+    # === Load data ===
+    neural_tensor = torch.load(NEURAL_TENSOR_PATH)
+    emotion_tensor = torch.load(EMOTION_TENSOR_PATH)
 
-# === Load data ===
-neural_tensor = torch.load(NEURAL_TENSOR_PATH)
-emotion_tensor = torch.load(EMOTION_TENSOR_PATH)
+    # === Prepare dataset and model ===
+    datasets = DatasetxCEBRA(neural=neural_tensor, continuous=emotion_tensor)
+    model = load_fixed_cebra_model(MODEL_WEIGHTS_PATH, num_output=N_LATENTS)
 
-# === Prepare dataset and model ===
-datasets = DatasetxCEBRA(neural=neural_tensor, continuous=emotion_tensor)
-model = load_fixed_cebra_model(MODEL_WEIGHTS_PATH, num_output=N_LATENTS)
+    datasets.configure_for(model)
+    data_input = datasets[torch.arange(len(datasets))]
 
-datasets.configure_for(model)
-data_input = datasets[torch.arange(len(datasets))]
+    # === Move to device and compute embedding ===
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    model.split_outputs = False
 
-# === Move to device and compute embedding ===
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
-model.split_outputs = False
+    embedding = model(data_input.to(device)).detach().cpu()
+    torch.save(embedding, EMBEDDING_PATH)
+    print("Embedding shape:", embedding.shape)
 
-embedding = model(data_input.to(device)).detach().cpu()
-torch.save(embedding, EMBEDDING_PATH)
-print("Embedding shape:", embedding.shape)
+if __name__ == "__main__":
+    main()
+    

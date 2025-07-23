@@ -1,48 +1,34 @@
-# RUN WITH: python -m src.main
-
-import torch
+import subprocess
 import os
-import sys
-import mat73
 
-from evaluate import evaluate_embedding
-from plot import plot_embedding, plot_confusion_matrix
-from attribution import compute_and_plot_attribution
-from config import (
-    EMBEDDING_PATH, MODEL_WEIGHTS_PATH, NEURAL_PATH,
-    EMOTION_TENSOR_PATH, NEURAL_TENSOR_PATH
-)
+# List of patient IDs you want to run the pipeline on
+PATIENT_IDS = [2.1]
+
+# List of scripts to run sequentially for each patient
+PIPELINE_SCRIPTS = [
+    "train_supervised",
+    "embedding",
+    "evaluate_supervised",
+    "attribution_supervised"
+]
+
+def run_pipeline_for_patient(pid):
+    env = os.environ.copy()
+    env["PATIENT_ID"] = str(pid)  # Set patient ID for config.py to use
+    print(f"\n====================== Running pipeline for Patient {pid} ======================")
+
+    for script in PIPELINE_SCRIPTS:
+        print(f"\n--- Running {script}.py for Patient {pid} ---")
+        # Run each script using `caffeinate` to keep system awake
+        try:
+            subprocess.run(["caffeinate", "-dimsu", "python", "-m", f"src.{script}"], check=True, env=env)
+        except subprocess.CalledProcessError as e:
+            print(f"[ERROR] Failed to run {script}.py for Patient {pid}: {e}")
+            return  # Skip remaining scripts for this patient if one fails
 
 def main():
-    # Evaluate and plot
-    print("Evaluating embedding...")
-    eval_result = evaluate_embedding()
-
-    print("Plotting embedding and confusion matrix...")
-    plot_embedding(eval_result)
-    plot_confusion_matrix(eval_result)
-
-    # Load model and neural data
-    print("Loading model and neural data for attribution...")
-    try:
-        model = torch.load(MODEL_WEIGHTS_PATH, map_location="cpu")
-    except Exception as e:
-        print(f"Failed to load model from {MODEL_WEIGHTS_PATH}: {e}")
-        sys.exit(1)
-
-    try:
-        neural_tensor = torch.load(NEURAL_TENSOR_PATH)
-    except FileNotFoundError:
-        print("Neural tensor file not found, attempting to load from .mat file...")
-        try:
-            raw_data = mat73.loadmat(NEURAL_PATH)
-            neural_tensor = torch.tensor(raw_data['stim'].T, dtype=torch.float32)
-        except Exception as e:
-            print(f"Failed to load neural data from {NEURAL_PATH}: {e}")
-            sys.exit(1)
-
-    print("Running attribution analysis...")
-    compute_and_plot_attribution(model, neural_tensor)
+    for pid in PATIENT_IDS:
+        run_pipeline_for_patient(pid)
 
 if __name__ == "__main__":
     main()

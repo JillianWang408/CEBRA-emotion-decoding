@@ -4,26 +4,28 @@ import numpy as np
 import torch
 import seaborn as sns
 import matplotlib
-matplotlib.use('MacOSX') 
+matplotlib.use('MacOSX')
 import matplotlib.pyplot as plt
 import os
 import cebra
 
 from src.config import (
     EMOTION_TENSOR_PATH, NEURAL_TENSOR_PATH,
-    N_LATENTS, N_ELECTRODES, ELECTRODE_NAMES, MODEL_WEIGHTS_PATH, ATTRIBUTION_OUTPUT_DIR
+    N_LATENTS, N_ELECTRODES, ELECTRODE_NAMES,
+    MODEL_WEIGHTS_PATH, ATTRIBUTION_OUTPUT_DIR
 )
 from src.utils import load_fixed_cebra_model
 
+# Ensure attribution output directory exists
 ATTRIBUTION_OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 
 def compute_and_plot_attribution(model):
-    # === Load data ===
+    # === Load tensors ===
     emotion_tensor = torch.load(EMOTION_TENSOR_PATH)
     neural_tensor = torch.load(NEURAL_TENSOR_PATH)
     neural_tensor.requires_grad_(True)
 
-    # === Attribution ===
+    # === Initialize attribution method ===
     model.split_outputs = False
     method = cebra.attribution.init(
         name="jacobian-based",
@@ -33,10 +35,7 @@ def compute_and_plot_attribution(model):
     )
     result = method.compute_attribution_map()
 
-    # === Create output folder ===
-    os.makedirs("attribution_outputs", exist_ok=True)
-
-    # === Latent heatmaps ===
+    # === Save latent heatmaps ===
     for key in ["jf", "jf-inv-svd"]:
         jf = result[key].transpose(1, 2, 0)  # [latents, neurons, time]
         jf_mean = np.abs(jf).mean(-1)       # [latents, neurons]
@@ -50,14 +49,13 @@ def compute_and_plot_attribution(model):
             plt.xlabel("Neuron Index")
             plt.title(f"Attribution Map for Latent {i} ({key})")
             plt.tight_layout()
-            plt.savefig(ATTRIBUTION_OUTPUT_DIR/ f"latent_{i}_{key}_heatmap.png")
+            plt.savefig(ATTRIBUTION_OUTPUT_DIR / f"latent_{i}_{key}_heatmap.png")
             plt.close()
 
-        # === Electrode grid heatmap ===
+        # Save electrode grid heatmaps only for 'jf'
         if key == "jf":
             for i in range(N_LATENTS):
                 jf_cov = jf_mean[i].reshape(N_ELECTRODES, N_ELECTRODES)
-
                 plt.figure(figsize=(10, 8))
                 sns.heatmap(
                     jf_cov,
@@ -72,30 +70,30 @@ def compute_and_plot_attribution(model):
                 plt.xlabel("Electrode")
                 plt.ylabel("Electrode")
                 plt.tight_layout()
-                plt.savefig(ATTRIBUTION_OUTPUT_DIR/ f"latent_{i}_electrode_covariance.png")
+                plt.savefig(ATTRIBUTION_OUTPUT_DIR / f"latent_{i}_electrode_covariance.png")
                 plt.close()
 
-    # === Summary attribution maps ===
+    # === Summary maps (average over time) ===
     plt.matshow(np.abs(result['jf']).mean(0), aspect="auto")
     plt.colorbar()
     plt.title("Attribution map of JF (mean over time)")
     plt.tight_layout()
-    plt.savefig(ATTRIBUTION_OUTPUT_DIR/"jf_summary.png")
+    plt.savefig(ATTRIBUTION_OUTPUT_DIR / "jf_summary.png")
     plt.close()
 
     plt.matshow(np.abs(result['jf-inv-svd']).mean(0), aspect="auto")
     plt.colorbar()
     plt.title("Attribution map of JFinv (mean over time)")
     plt.tight_layout()
-    plt.savefig(ATTRIBUTION_OUTPUT_DIR/"jfinv_summary.png")
+    plt.savefig(ATTRIBUTION_OUTPUT_DIR / "jfinv_summary.png")
     plt.close()
 
-    # === Electrode attribution covariance summary (averaged over latent groups)
-    jf = result["jf"].transpose(1, 2, 0)  # [latents, neurons, time]
-    jf_mean = np.abs(jf).mean(-1)         # [latents, neurons]
+    # === Aggregate electrode attribution (average over all latents) ===
+    jf = result["jf"].transpose(1, 2, 0)
+    jf_mean = np.abs(jf).mean(-1)
 
-    # Helper to reshape latent-averaged [neurons] → [N_ELECTRODES × N_ELECTRODES]
     def plot_electrode_cov(mean_vector, title, filename):
+        """Helper to plot reshaped electrode-level heatmap."""
         jf_cov = mean_vector.reshape(N_ELECTRODES, N_ELECTRODES)
         plt.figure(figsize=(10, 8))
         sns.heatmap(
@@ -114,19 +112,13 @@ def compute_and_plot_attribution(model):
         plt.savefig(ATTRIBUTION_OUTPUT_DIR / filename)
         plt.close()
 
-    # Grouped summaries
-    grouped_means = {
-        "all10": jf_mean.mean(axis=0),
-    }
+    # Grouped summary plots
+    plot_electrode_cov(
+        mean_vector=jf_mean.mean(axis=0),
+        title="Electrode Attribution Covariance — all10 latents",
+        filename="electrode_covariance_summary_all10.png"
+    )
 
-    # Plot all group summaries
-    for group_name, mean_vec in grouped_means.items():
-        plot_electrode_cov(
-            mean_vector=mean_vec,
-            title=f"Electrode Attribution Covariance — {group_name} latents",
-            filename=f"electrode_covariance_summary_{group_name}.png"
-        )
-    
     # === Diagnostics ===
     top_inputs = result['jf'].mean(0).argsort()[:10]
     print("Attribution analysis complete.")
