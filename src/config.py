@@ -19,14 +19,14 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # Patient configuration dictionary
 PATIENT_CONFIG = {
-    1:      ("EC272", "Patient1", "patient_1"),
-    1.1:    ("EC272", "Patient1", "patient_1.1"),
-    2:      ("EC301", "Patient2", "patient_2"),
-    2.1:    ("EC301", "Patient2", "patient_2"),
-    3:      ("EC304", "Patient3", "patient_3"),
-    3.1:    ("EC304", "Patient3", "patient_3.1"),
-    4.1:    ("EC239", "Patient4", "patient_4.1"),
-    5.1:    ("EC238", "Patient5", "patient_5.1"),
+    272.0:      ("EC272", "272", "272.0"),
+    301.0:      ("EC301", "301", "301.0"),
+
+    272:    ("EC272", "272", "272"),
+    301:    ("EC301", "301", "301"),
+    304:    ("EC304", "304", "304"),
+    239:    ("EC239", "239", "239"),
+    238:    ("EC238", "238", "238"),
 }
 
 ec_code, patient_dir, output_dir = PATIENT_CONFIG[PATIENT_ID]

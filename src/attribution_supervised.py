@@ -119,6 +119,18 @@ def compute_and_plot_attribution(model):
         filename="electrode_covariance_summary_all10.png"
     )
 
+    # Save the normaliedcovariance matrix as .npy
+    mean_vec = jf_mean.mean(axis=0)
+    cov_matrix = mean_vec.reshape(N_ELECTRODES, N_ELECTRODES)
+    cov_matrix_normalized = cov_matrix / cov_matrix.sum()
+    np.save(ATTRIBUTION_OUTPUT_DIR / "electrode_covariance_summary_all10.npy", cov_matrix_normalized)
+
+    plot_electrode_cov(
+        mean_vector=cov_matrix_normalized.flatten(),
+        title="Normalized Electrode Attribution Covariance — all10 latents",
+        filename="electrode_covariance_summary_all10.png"
+    )
+
     # === Diagnostics ===
     top_inputs = result['jf'].mean(0).argsort()[:10]
     print("Attribution analysis complete.")

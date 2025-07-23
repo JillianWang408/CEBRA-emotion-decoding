@@ -2,7 +2,7 @@ import subprocess
 import os
 
 # List of patient IDs you want to run the pipeline on
-PATIENT_IDS = [2.1]
+PATIENT_IDS = ["238", "239", "272", "304"]
 
 # List of scripts to run sequentially for each patient
 PIPELINE_SCRIPTS = [

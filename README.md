@@ -47,11 +47,12 @@ pip install -r requirements.txt
 ## Directory Structure
 - `src/`: Core scripts for training, evaluation, and attribution (Omit the hybrid_training subfolder containing outdated codes.)
 - `output`: Models, embedding, evaluation, and attribution maps
-    - patient_x: Output for patient X after hybrid training (outdated)
-    - patient_x.1: Output for patient X after supervised training (all latent based on emotion labels) ✅
+    - patient_x.0: Output for patient X after hybrid training (outdated)
+    - patient_x: Output for patient X after supervised training (all latent based on emotion labels) ✅
         - `models/`: Saved model weights
         - `evaluation_outputs/`: embedding 3D visualization and confusion matrix
         - `attibution_outputs/`: output images from running the attribution.py module, including attribution maps and covariance matrix for each latent dimension
+    - aggreate_outputs: aggregated normalized covariance matrix from selected patients
 - `data/`: ECoG and label files (.mat)
 
 ## How to run (Full Pipeline)
