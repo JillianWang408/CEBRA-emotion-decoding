@@ -5,7 +5,7 @@ from pathlib import Path
 import json
 from cebra.models import init as init_model
 from cebra.data import DatasetxCEBRA
-from src.config import (NEURAL_TENSOR_PATH, EMOTION_TENSOR_PATH, MODEL_WEIGHTS_PATH, EMBEDDING_PATH)
+from src.config import (NEURAL_TENSOR_PATH, EMOTION_TENSOR_PATH, MODEL_WEIGHTS_PATH, EMBEDDING_PATH, N_LATENTS)
 from src.utils import load_fixed_cebra_model
 
 
@@ -15,7 +15,7 @@ emotion_tensor = torch.load(EMOTION_TENSOR_PATH)
 
 # === Prepare dataset and model ===
 datasets = DatasetxCEBRA(neural=neural_tensor, continuous=emotion_tensor)
-model = load_fixed_cebra_model(MODEL_WEIGHTS_PATH, num_output=20)
+model = load_fixed_cebra_model(MODEL_WEIGHTS_PATH, num_output=N_LATENTS)
 
 datasets.configure_for(model)
 data_input = datasets[torch.arange(len(datasets))]

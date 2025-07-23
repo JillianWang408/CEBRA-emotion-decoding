@@ -1,5 +1,5 @@
 # RUN THESE TWO LINES TOGETHER: 
-# caffeinate -dimsu python -m src.train
+# caffeinate -dimsu python -m src.train_supervised
 
 import torch
 import cebra
@@ -13,7 +13,7 @@ from cebra.models.jacobian_regularizer import JacobianReg
 
 from src.config import (
     MODEL_DIR, NEURAL_PATH, EMOTION_PATH, MODEL_WEIGHTS_PATH, NEURAL_TENSOR_PATH, 
-    EMOTION_TENSOR_PATH, BEHAVIOR_INDICES, TIME_INDICES, N_LATENTS
+    EMOTION_TENSOR_PATH, BEHAVIOR_INDICES, N_LATENTS
 )
 
 # === Load Data ===
@@ -38,22 +38,17 @@ datasets = DatasetxCEBRA(neural=neural_tensor, position=emotion_tensor)
 # === Loader ===
 batch_size = 512
 num_steps = 1000
-n_latents = 20
+n_latents = N_LATENTS
 behavior_indices = BEHAVIOR_INDICES # The embedding[:, 0:9] portion will be trained using emotion contrastive loss (e.g., close if same emotion).
-time_indices = TIME_INDICES #The embedding[:, 9:18] portion will be trained using time contrastive loss (e.g., close if nearby in time).
 loader = ContrastiveMultiObjectiveLoader(dataset=datasets, batch_size=batch_size, num_steps=num_steps)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 # === Config ===
 config = MultiObjectiveConfig(loader)
 config.set_slice(*BEHAVIOR_INDICES)
 config.set_loss("FixedCosineInfoNCE", temperature=1.0)
 config.set_distribution("time_delta", time_delta=1, label_name="position")
-config.push()
-
-config.set_slice(*TIME_INDICES)
-config.set_loss("FixedCosineInfoNCE", temperature=1.0)
-config.set_distribution("time", time_offset=10)
 config.push()
 config.finalize()
 
@@ -74,12 +69,12 @@ opt = torch.optim.Adam(list(neural_model.parameters()) + list(criterion.paramete
 regularizer = cebra.models.jacobian_regularizer.JacobianReg()
 
 #Create Solver (for actual training)
-solver = cebra.solver.init(name="multiobjective-solver", model=neural_model, feature_ranges=feature_ranges,
+solver = cebra.solver.init(name='multiobjective-solver', model=neural_model, feature_ranges=feature_ranges,
                           regularizer=regularizer, renormalize=True, use_sam=False, criterion=criterion,
                           optimizer=opt, tqdm_on=True).to(device)
 
 # === Regularizer scheduler ===
-weight_scheduler = LinearRampUp(n_splits=2, step_to_switch_on_reg=num_steps // 4, step_to_switch_off_reg=num_steps // 2,
+weight_scheduler = LinearRampUp(n_splits=1, step_to_switch_on_reg=num_steps // 4, step_to_switch_off_reg=num_steps // 2,
                          start_weight=0.0, end_weight=0.1)
 
 # === Train ===
