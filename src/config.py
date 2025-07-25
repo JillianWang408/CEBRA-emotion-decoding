@@ -19,20 +19,25 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # Patient configuration dictionary
 PATIENT_CONFIG = {
-    272.0:      ("EC272", "272", "272.0"),
-    301.0:      ("EC301", "301", "301.0"),
+    9.0:      ("EC272", "272.0"),
+    27.0:      ("EC301","301.0"),
 
-    272:    ("EC272", "272", "272"),
-    301:    ("EC301", "301", "301"),
-    304:    ("EC304", "304", "304"),
-    239:    ("EC239", "239", "239"),
-    238:    ("EC238", "238", "238"),
+    1:    ("EC238", "238"),
+    2:    ("EC239", "239"),
+    9:    ("EC272", "272"),
+    27:    ("EC301", "301"),
+    28:    ("EC304", "304"),
+
+    15: ("EC280", "280"), #280 noisiest
+    22: ("EC288", "288"),
+    24: ("EC293", "293"),
+    30: ("EC325", "325"),
+    31: ("EC326", "326"),
 }
 
-ec_code, patient_dir, output_dir = PATIENT_CONFIG[PATIENT_ID]
+ec_code, output_dir = PATIENT_CONFIG[PATIENT_ID]
 
-DATA_ROOT = Path(f"/Users/wangzihan/Desktop/Projects/xCEBRA/data/{ec_code}/{patient_dir}")
-DATA_DIR = PROJECT_ROOT / "data" / ec_code / patient_dir
+DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12_5"
 MODEL_DIR = PROJECT_ROOT / "output" / output_dir / "models"
 EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output" / output_dir / "evaluation_outputs"
 ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output" / output_dir / "attribution_outputs"

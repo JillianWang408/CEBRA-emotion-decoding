@@ -73,7 +73,7 @@ def evaluate_embedding():
     ax.set_axis_off()
 
     plt.savefig(EVALUATION_EMBEDDING_PLOT, dpi=300)
-    plt.show()
+    plt.close()
     print(f"Saved 3D embedding visualization to {EVALUATION_EMBEDDING_PLOT}")
 
     # === Confusion Matrix from last fold ===
@@ -97,7 +97,7 @@ def evaluate_embedding():
     plt.title("Confusion Matrix - Emotion Classification")
 
     plt.savefig(EVALUATION_CONFUSION_PLOT, dpi=300)
-    plt.show()
+    plt.close()
     print(f"Saved confusion matrix to {EVALUATION_CONFUSION_PLOT}")
 
     print("Unique labels in test set:", unique_labels)

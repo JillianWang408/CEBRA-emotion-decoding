@@ -6,7 +6,9 @@ import seaborn as sns
 from pathlib import Path
 
 # === Specify patients to include ===
-id = ["238", "239", "272", "304"]
+#id = ["238", "239", "272", "301", "304"]
+id = ["239", "272", "304"]
+#id = ["238", "239", "272", "280", "288", "293", "301", "304", "325", "326"]
 n_electrodes = 40
 electorde_names =  ['LOFC7', 'LOFC8', 'LOFC9', 'LOFC10', 'LOFC1', 'LOFC2', 'LOFC3', 'LOFC4', 
     'ROFC1', 'ROFC2', 'ROFC3', 'ROFC4', 'ROFC7', 'ROFC8', 'ROFC9', 'ROFC10', 

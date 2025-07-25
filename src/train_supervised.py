@@ -41,7 +41,7 @@ def main():
 
     # === Loader ===
     batch_size = 512
-    num_steps = 10
+    num_steps = 1000
     loader = ContrastiveMultiObjectiveLoader(dataset=datasets, batch_size=batch_size, num_steps=num_steps)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
