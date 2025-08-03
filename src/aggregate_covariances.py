@@ -5,6 +5,16 @@ import seaborn as sns
 
 patient_ids = ["239", "272", "304"]  # or however many you have
 N = 40
+ELECTRODE_NAMES = [
+    'LOFC7', 'LOFC8', 'LOFC9', 'LOFC10', 'LOFC1', 'LOFC2', 'LOFC3', 'LOFC4', 
+    'ROFC1', 'ROFC2', 'ROFC3', 'ROFC4', 'ROFC7', 'ROFC8', 'ROFC9', 'ROFC10', 
+    'LAD1', 'LAD2', 'LAD3', 'LAD4',
+    'LINS1', 'LINS2', 'LINS3', 'LINS4',
+    'LC1', 'LC2', 'LC3', 'LC4',
+    'RC1', 'RC2', 'RC3', 'RC4',
+    'RINS1', 'RINS2', 'RINS3', 'RINS4',
+    'RAD1', 'RAD2', 'RAD3', 'RAD4'
+]
 
 sum_matrix = np.zeros((N, N))
 count_matrix = np.zeros((N, N))
@@ -41,7 +51,7 @@ np.save(output_dir / "aggregated_covariance_normalized.npy", summary_cov)
 
 # === Plot
 plt.figure(figsize=(10, 8))
-sns.heatmap(summary_cov, cmap="viridis", square=True, cbar=True)
+sns.heatmap(summary_cov, cmap="viridis", square=True, cbar=True, xticklabels=ELECTRODE_NAMES, yticklabels=ELECTRODE_NAMES)
 plt.title("Aggregated Normalized Pairwise Electrode Attribution")
 plt.xlabel("Electrode")
 plt.ylabel("Electrode")
