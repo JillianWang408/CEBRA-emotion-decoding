@@ -25,6 +25,13 @@ def compute_and_plot_attribution(model):
     neural_tensor = torch.load(NEURAL_TENSOR_PATH)
     neural_tensor.requires_grad_(True)
 
+    # === Determine per-electrode activity mask (shape: [40])
+    neural_np = neural_tensor.detach().cpu().numpy()  # shape: [T, 1600]
+    neural_activity_mask_flat = neural_np.sum(axis=0) != 0  # shape: (1600,)
+    pairwise_mask = neural_activity_mask_flat.reshape(N_ELECTRODES, N_ELECTRODES)
+    electrode_mask = (pairwise_mask.sum(axis=0) > 0) | (pairwise_mask.sum(axis=1) > 0)  # shape: (40,)
+    pair_mask_2d = np.outer(electrode_mask, electrode_mask)  # shape: (40, 40)
+
     # === Initialize attribution method ===
     model.split_outputs = False
     method = cebra.attribution.init(
@@ -63,7 +70,8 @@ def compute_and_plot_attribution(model):
                     square=True,
                     cbar=True,
                     xticklabels=ELECTRODE_NAMES,
-                    yticklabels=ELECTRODE_NAMES
+                    yticklabels=ELECTRODE_NAMES,
+                    mask=~pair_mask_2d
                 )
                 plt.xticks(rotation=90)
                 plt.title(f"Latent {i} — Electrode Attribution Covariance")
@@ -89,20 +97,22 @@ def compute_and_plot_attribution(model):
     plt.close()
 
     # === Aggregate electrode attribution (average over all latents) ===
-    jf = result["jf"].transpose(1, 2, 0)
-    jf_mean = np.abs(jf).mean(-1)
+    jf = result["jf"].transpose(1, 2, 0)  # [latents, neurons, time]
+    jf_mean = np.abs(jf).mean(-1)        # [latents, neurons]
+    mean_vec = jf_mean.mean(axis=0)      # [1600]
+    cov_matrix = mean_vec.reshape(N_ELECTRODES, N_ELECTRODES)  # [40, 40]
 
-    def plot_electrode_cov(mean_vector, title, filename):
-        """Helper to plot reshaped electrode-level heatmap."""
-        jf_cov = mean_vector.reshape(N_ELECTRODES, N_ELECTRODES)
+    def plot_electrode_cov(matrix, title, filename):
+        """Helper to plot masked electrode-level heatmap."""
         plt.figure(figsize=(10, 8))
         sns.heatmap(
-            jf_cov,
+            matrix,
             cmap='viridis',
             square=True,
             cbar=True,
             xticklabels=ELECTRODE_NAMES,
-            yticklabels=ELECTRODE_NAMES
+            yticklabels=ELECTRODE_NAMES,
+            mask=~pair_mask_2d
         )
         plt.xticks(rotation=90)
         plt.title(title)
@@ -112,30 +122,24 @@ def compute_and_plot_attribution(model):
         plt.savefig(ATTRIBUTION_OUTPUT_DIR / filename)
         plt.close()
 
-    # Grouped summary plots
+    # Save final masked attribution map
     plot_electrode_cov(
-        mean_vector=jf_mean.mean(axis=0),
-        title="Electrode Attribution Covariance — all10 latents",
+        matrix=cov_matrix,
+        title="Electrode Attribution Covariance — all10 latents (masked)",
         filename="electrode_covariance_summary_all10.png"
     )
 
-    # Save the normaliedcovariance matrix as .npy
-    mean_vec = jf_mean.mean(axis=0)
-    cov_matrix = mean_vec.reshape(N_ELECTRODES, N_ELECTRODES)
-    cov_matrix_normalized = cov_matrix / cov_matrix.sum()
-    np.save(ATTRIBUTION_OUTPUT_DIR / "electrode_covariance_summary_all10.npy", cov_matrix_normalized)
-
-    plot_electrode_cov(
-        mean_vector=cov_matrix_normalized.flatten(),
-        title="Normalized Electrode Attribution Covariance — all10 latents",
-        filename="electrode_covariance_summary_all10.png"
-    )
+    # === Save outputs ===
+    np.save(ATTRIBUTION_OUTPUT_DIR / "electrode_covariance_summary_all10.npy", cov_matrix)
+    np.save(ATTRIBUTION_OUTPUT_DIR / "electrode_mask.npy", electrode_mask)
 
     # === Diagnostics ===
     top_inputs = result['jf'].mean(0).argsort()[:10]
     print("Attribution analysis complete.")
     print("Neural shape:", neural_tensor.shape)
+    print("Active electrodes:", np.count_nonzero(electrode_mask), "/", N_ELECTRODES)
     print("Top input feature indices:", top_inputs)
+
 
 if __name__ == "__main__":
     model = load_fixed_cebra_model(MODEL_WEIGHTS_PATH, num_output=N_LATENTS)
