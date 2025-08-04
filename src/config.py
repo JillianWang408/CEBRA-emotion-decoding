@@ -31,13 +31,21 @@ PATIENT_CONFIG = {
     15: ("EC280", "280"), #280 noisiest
     22: ("EC288", "288"),
     24: ("EC293", "293"),
+    29: ("PR06", "PR06"),
     30: ("EC325", "325"),
     31: ("EC326", "326"),
 }
 
 ec_code, output_dir = PATIENT_CONFIG[PATIENT_ID]
 
-DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12_5"
+#40*40
+# DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12_5"
+# MODEL_DIR = PROJECT_ROOT / "output_covariance" / output_dir / "models"
+# EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output_covariance" / output_dir / "evaluation_outputs"
+# ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output_covariance" / output_dir / "attribution_outputs"
+
+#40*5*5
+DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12_5"
 MODEL_DIR = PROJECT_ROOT / "output" / output_dir / "models"
 EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output" / output_dir / "evaluation_outputs"
 ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output" / output_dir / "attribution_outputs"
