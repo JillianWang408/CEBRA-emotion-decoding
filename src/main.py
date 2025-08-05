@@ -6,9 +6,10 @@ PATIENT_IDS = [1, 2, 9, 27, 28, 15, 22, 24, 29, 30, 31]
 
 # List of scripts to run sequentially for each patient
 PIPELINE_SCRIPTS = [
-    # "train_supervised",
-    # "embedding",
-    # "evaluate_supervised",
+    #"split_dataset",
+    #"train_supervised",
+    #"embedding",
+    #"evaluate_supervised",
     "attribution_supervised_new"
 ]
 

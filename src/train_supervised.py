@@ -5,6 +5,7 @@ import torch
 import cebra
 import mat73
 import scipy.io
+import numpy as np
 from pathlib import Path
 from cebra.data import DatasetxCEBRA, ContrastiveMultiObjectiveLoader
 from cebra.solver import MultiObjectiveConfig
@@ -13,25 +14,28 @@ from cebra.models import init as init_model
 from cebra.models.jacobian_regularizer import JacobianReg
 
 from src.config import (
-    MODEL_DIR, NEURAL_PATH, EMOTION_PATH, MODEL_WEIGHTS_PATH, 
+    MODEL_DIR, NEURAL_PATH, EMOTION_PATH, FULL_NEURAL_PATH, FULL_EMOTION_PATH, MODEL_WEIGHTS_PATH, 
     NEURAL_TENSOR_PATH, EMOTION_TENSOR_PATH, 
     BEHAVIOR_INDICES, N_LATENTS
 )
 
 def main():
     # === Load Data ===
+    train_idx = np.load("splits/train_idx.npy")
     neural_array = mat73.loadmat(NEURAL_PATH)['stim'].T
     emotion_array = scipy.io.loadmat(EMOTION_PATH)['resp'].flatten()
 
-    neural_tensor = torch.tensor(neural_array, dtype=torch.float32)
-    emotion_tensor = torch.tensor(emotion_array, dtype=torch.float32).unsqueeze(1)
-
+    neural_tensor_full = torch.tensor(neural_array, dtype=torch.float32)
+    emotion_tensor_full = torch.tensor(emotion_array, dtype=torch.float32).unsqueeze(1)
+    neural_tensor = torch.tensor(neural_array, dtype=torch.float32)[train_idx]
+    emotion_tensor = torch.tensor(emotion_array, dtype=torch.float32)[train_idx].unsqueeze(1)
+    
     MODEL_DIR.mkdir(exist_ok=True, parents=True)
-    NEURAL_TENSOR_PATH.parent.mkdir(exist_ok=True, parents=True)
-    EMOTION_TENSOR_PATH.parent.mkdir(exist_ok=True, parents=True)
 
     torch.save(neural_tensor, NEURAL_TENSOR_PATH)
     torch.save(emotion_tensor, EMOTION_TENSOR_PATH)
+    torch.save(torch.tensor(neural_tensor_full), FULL_NEURAL_PATH)
+    torch.save(torch.tensor(emotion_tensor_full), FULL_EMOTION_PATH)
 
     print("Tensors saved.")
     print("neural_tensor shape:", neural_tensor.shape)

@@ -53,8 +53,12 @@ ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output" / output_dir / "attribution_out
 # File paths
 NEURAL_PATH = DATA_DIR / "nrcRF_calc_Stim_StimNum_5_Nr_1_msBW_1000_movHeldOut_1.mat"
 EMOTION_PATH = DATA_DIR / "nrcRF_calc_Resp_chan_1_movHeldOut_1.mat"
+
 NEURAL_TENSOR_PATH = MODEL_DIR / "neural_tensor.pt"
 EMOTION_TENSOR_PATH = MODEL_DIR / "emotion_tensor.pt"
+FULL_NEURAL_PATH = MODEL_DIR / "full_neural_tensor.pt"
+FULL_EMOTION_PATH = MODEL_DIR / "full_emotion_tensor.pt"
+
 MODEL_WEIGHTS_PATH = MODEL_DIR / "xcebra_weights.pt"
 EMBEDDING_PATH = MODEL_DIR / "embedding.pt"
 

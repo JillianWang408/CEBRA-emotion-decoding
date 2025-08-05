@@ -10,7 +10,7 @@ import os
 import cebra
 
 from src.config import (
-    EMOTION_TENSOR_PATH, NEURAL_TENSOR_PATH,
+    EMOTION_TENSOR_PATH, NEURAL_TENSOR_PATH, FULL_NEURAL_PATH, FULL_EMOTION_PATH,
     N_LATENTS, N_ELECTRODES, ELECTRODE_NAMES,
     MODEL_WEIGHTS_PATH, ATTRIBUTION_OUTPUT_DIR
 )
@@ -20,11 +20,16 @@ from src.utils import load_fixed_cebra_model
 ATTRIBUTION_OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 
 def compute_and_plot_attribution(model):
-    # === Load tensors ===
-    emotion_tensor = torch.load(EMOTION_TENSOR_PATH)
-    neural_tensor = torch.load(NEURAL_TENSOR_PATH)
+    # === Load full tensors ===
+    full_neural_tensor = torch.load(FULL_NEURAL_PATH)
+    full_emotion_tensor = torch.load(FULL_EMOTION_PATH)
+
+    # === Load test indices and slice
+    test_idx = np.load("splits/test_idx.npy")
+    neural_tensor = full_neural_tensor[test_idx]
+    emotion_tensor = full_emotion_tensor[test_idx]
+
     neural_tensor.requires_grad_(True)
-    
     print(neural_tensor.shape)
 
     assert neural_tensor.shape[1] == 1000, "Expected neural input to have 1000 features (40×5×5)."
@@ -60,10 +65,12 @@ def compute_and_plot_attribution(model):
     # === Compute average attribution over latents and time
     jf = result["jf"]  # shape: (time, latents, 1000)
     jf_mean = np.abs(jf).mean(axis=(0)) # [10, 1000]
+    np.save(ATTRIBUTION_OUTPUT_DIR / "jf_mean_raw.npy", jf_mean)
 
     # === Process each latent → [40, 5, 5] → [200, 5]
     latent_maps = []
     for i in range(N_LATENTS):
+
         latent_attr = jf_mean[i].reshape(5, N_ELECTRODES, 5).transpose(1, 0, 2)  # [40, 5, 5]
         latent_attr_200x5 = latent_attr.reshape(N_ELECTRODES * 5, 5)  # [200, 5]
 

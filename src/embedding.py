@@ -1,9 +1,11 @@
 # RUN WITH: python -m src.embedding
 
 import torch
+import numpy as np
 from pathlib import Path
 from cebra.data import DatasetxCEBRA
 from src.config import (
+    FULL_NEURAL_PATH, FULL_EMOTION_PATH,
     NEURAL_TENSOR_PATH, EMOTION_TENSOR_PATH, 
     MODEL_WEIGHTS_PATH, EMBEDDING_PATH, N_LATENTS
 )
@@ -11,8 +13,8 @@ from src.utils import load_fixed_cebra_model
 
 def main():
     # === Load data ===
-    neural_tensor = torch.load(NEURAL_TENSOR_PATH)
-    emotion_tensor = torch.load(EMOTION_TENSOR_PATH)
+    neural_tensor = torch.load(FULL_NEURAL_PATH)
+    emotion_tensor = torch.load(FULL_EMOTION_PATH)
 
     # === Prepare dataset and model ===
     datasets = DatasetxCEBRA(neural=neural_tensor, continuous=emotion_tensor)
