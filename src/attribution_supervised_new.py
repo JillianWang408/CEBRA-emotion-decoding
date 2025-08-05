@@ -58,60 +58,67 @@ def compute_and_plot_attribution(model):
     result = method.compute_attribution_map()
 
     # === Compute average attribution over latents and time
-    jf = result["jf"]  # shape: [latents, 1000, time]
-    jf_mean = np.abs(jf).mean(axis=(0, 1))
+    jf = result["jf"]  # shape: (time, latents, 1000)
+    jf_mean = np.abs(jf).mean(axis=(0)) # [10, 1000]
 
-    # === Reshape to [40, 5, 5] = [electrode, lag, band]
-    attr_tensor = jf_mean.reshape(5, N_ELECTRODES, 5).transpose(1, 0, 2)  # → shape: [electrode, lag, band]
+    # === Process each latent → [40, 5, 5] → [200, 5]
+    latent_maps = []
+    for i in range(N_LATENTS):
+        latent_attr = jf_mean[i].reshape(5, N_ELECTRODES, 5).transpose(1, 0, 2)  # [40, 5, 5]
+        latent_attr_200x5 = latent_attr.reshape(N_ELECTRODES * 5, 5)  # [200, 5]
 
-    band_names = ["Theta", "Alpha", "Beta", "Low-γ", "High-γ"]
+        # Mask: expand electrode_mask [40] → [200]
+        mask_per_band = np.repeat(electrode_mask, 5)  # [200]
+        masked_attr = np.where(mask_per_band[:, None], latent_attr_200x5, np.nan)
+        latent_maps.append(masked_attr)
 
-    for b in range(5):
-        band_attr = attr_tensor[:, :, b]  # [electrode, lag]
-        masked_band_attr = np.where(electrode_mask[:, None], band_attr, np.nan)
-        
-        np.save(ATTRIBUTION_OUTPUT_DIR / f"attribution_band_{b}_{band_names[b]}.npy", band_attr)
-
-        plt.figure(figsize=(10, 8))
+        # === Plot this latent
+        plt.figure(figsize=(10, 12))
         sns.heatmap(
-            masked_band_attr,
+            masked_attr,
             cmap="viridis",
             xticklabels=[f"Lag {i+1}" for i in range(5)],
-            yticklabels=ELECTRODE_NAMES,
+            yticklabels=[ELECTRODE_NAMES[i // 5] if i % 5 == 0 else "" for i in range(200)],
             cbar=True,
-            mask=np.isnan(masked_band_attr)
+            mask=np.isnan(masked_attr)
         )
-        plt.xlabel("Neural Lag (seconds before emotion)")
-        plt.ylabel("Electrode")
-        plt.title(f"Attribution Map: Electrode × Time Lag — {band_names[b]}")
+        plt.xlabel("Time Lags")
+        plt.ylabel("Electrode × Band")
+        plt.title(f"Latent {i} Attribution Map (200×5)")
         plt.tight_layout()
-        plt.savefig(ATTRIBUTION_OUTPUT_DIR / f"attribution_lag_band_{b}_{band_names[b]}.png")
-    plt.close()
+        plt.savefig(ATTRIBUTION_OUTPUT_DIR / f"latent_{i}_attr_map.png")
+        plt.close()
 
-    attr_40x5 = attr_tensor.mean(axis=2)  # [electrode, lag]
-    masked_attr = np.where(electrode_mask[:, None], attr_40x5, np.nan)
+    # === Average across latents
+    latent_stack = np.stack(latent_maps)  # shape: [10, 200, 5]
+    avg_latent_map = np.nanmean(latent_stack, axis=0)  # shape: [200, 5]
 
-    plt.figure(figsize=(10, 8))
+    plt.figure(figsize=(10, 12))
     sns.heatmap(
-        masked_attr,
+        avg_latent_map,
         cmap="viridis",
         xticklabels=[f"Lag {i+1}" for i in range(5)],
-        yticklabels=ELECTRODE_NAMES,
-        cbar=True,
-        mask=np.isnan(masked_attr)
+        yticklabels=[ELECTRODE_NAMES[i // 5] if i % 5 == 0 else "" for i in range(200)],
+        cbar=True
     )
-    plt.xlabel("Neural Lag (seconds before emotion)")
-    plt.ylabel("Electrode")
-    plt.title("Attribution Map: Electrode × Time Lag (Avg across bands)")
+    plt.xlabel("Time Lags")
+    plt.ylabel("Electrode × Band")
+    plt.title("Average Attribution Map Across Latents")
     plt.tight_layout()
-    plt.savefig(ATTRIBUTION_OUTPUT_DIR / "attribution_electrode_lag_summary.png")
+    plt.savefig(ATTRIBUTION_OUTPUT_DIR / "avg_latent_attr_map.png")
     plt.close()
+
+    # === Save numpy files
+    np.save(ATTRIBUTION_OUTPUT_DIR / "all_latent_attr_maps.npy", latent_stack)  # [10, 200, 5]
+    np.save(ATTRIBUTION_OUTPUT_DIR / "avg_latent_attr_map.npy", avg_latent_map)
+
+    print("Attribution analysis complete.")
+    print("Latent attribution shape:", latent_stack.shape)
 
     # === Diagnostics
     print("Attribution analysis complete.")
     print("Neural shape:", neural_tensor.shape)
     print("Active electrodes:", np.count_nonzero(electrode_mask), "/", N_ELECTRODES)
-    print("Attribution shape:", attr_40x5.shape)
 
 if __name__ == "__main__":
     model = load_fixed_cebra_model(MODEL_WEIGHTS_PATH, num_output=N_LATENTS)

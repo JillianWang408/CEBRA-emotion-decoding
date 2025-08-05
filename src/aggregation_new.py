@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 patient_ids = ["238", "239", "272", "301", "304", "280", "288", "293", "PR06", "325", "326"]
-N = 40
 ELECTRODE_NAMES = [
     'LOFC7', 'LOFC8', 'LOFC9', 'LOFC10', 'LOFC1', 'LOFC2', 'LOFC3', 'LOFC4', 
     'ROFC1', 'ROFC2', 'ROFC3', 'ROFC4', 'ROFC7', 'ROFC8', 'ROFC9', 'ROFC10', 
@@ -16,63 +15,89 @@ ELECTRODE_NAMES = [
     'RAD1', 'RAD2', 'RAD3', 'RAD4'
 ]
 BAND_NAMES = ["Theta", "Alpha", "Beta", "Low-γ", "High-γ"]
+N_ELECTRODES = 40
+N_BANDS = 5
+N_LAGS = 5
+N_LATENTS = 10
 
-sum_tensor = np.zeros((5, 40, 5))
-count_tensor = np.zeros((5, 40, 5))
+# === For latent aggregation ===
+sum_latents = np.zeros((N_LATENTS, N_ELECTRODES * N_BANDS, N_LAGS))
+count_latents = np.zeros_like(sum_latents)
 
 for pid in patient_ids:
     base_path = Path("output") / pid / "attribution_outputs"
-    mask_path = base_path / "electrode_mask.npy"
-    mask = np.load(mask_path)      # shape (40,)
     
-    for b in range(5):
-        attr_path = base_path / f"attribution_band_{b}_{BAND_NAMES[b]}.npy"
-        if not attr_path.exists():
-            print(f"⚠️ Missing attribution map for patient {pid}, band {BAND_NAMES[b]}")
-            continue
-        
-        attr = np.load(attr_path)  # shape: (40, 5)
-        valid_attr = np.where(mask[:, None], attr, 0)
-        valid_counts = np.where(mask[:, None], 1, 0)
-        
-        sum_tensor[b] += valid_attr
-        count_tensor[b] += valid_counts
+    # === Load electrode mask
+    mask_path = base_path / "electrode_mask.npy"
+    mask = np.load(mask_path)  # shape: (40,)
 
-# === Average over patients (only where count > 0)
+    # Expand mask to 200 rows (40 electrodes × 5 bands)
+    mask_200 = np.repeat(mask, N_BANDS)  # shape: (200,)
+
+    # === Load latent attribution maps
+    latent_path = base_path / "all_latent_attr_maps.npy"
+
+    latents = np.load(latent_path)  # shape: [10, 200, 5]
+    
+    for i in range(N_LATENTS):
+        latent_map = latents[i]  # shape [200, 5]
+        valid_attr = np.where(mask_200[:, None], latent_map, 0)
+        valid_count = np.where(mask_200[:, None], 1, 0)
+
+        sum_latents[i] += valid_attr
+        count_latents[i] += valid_count
+
+# === Average over patients (handle divide-by-zero)
 with np.errstate(divide='ignore', invalid='ignore'):
-    avg_tensor = np.divide(sum_tensor, count_tensor, where=(count_tensor > 0))
-    avg_tensor[np.isnan(avg_tensor)] = 0
+    avg_latents = np.divide(sum_latents, count_latents, where=(count_latents > 0))
+    avg_latents[np.isnan(avg_latents)] = 0
 
-# === Normalize so total sum is 1
+# === Summary across latents
+summary_latent = np.mean(avg_latents, axis=0)  # shape: (200, 5)
+
+# === Normalize
+total_sum = np.sum(avg_latents)
+avg_latents /= total_sum
+summary_latent /= np.sum(summary_latent)
+
+# === Save and Plot
 output_dir = Path("output/aggregate_outputs")
 output_dir.mkdir(exist_ok=True, parents=True)
 
-avg_tensor /= avg_tensor.sum()
+np.save(output_dir / "avg_latent_attr_maps.npy", avg_latents)         # shape [10, 200, 5]
+np.save(output_dir / "summary_avg_latent_attr_map.npy", summary_latent)  # shape [200, 5]
 
-# === Save
-output_dir = Path("output/aggregate_outputs")
-output_dir.mkdir(exist_ok=True, parents=True)
-
-np.save(output_dir / "aggregated_covariance_normalized.npy", avg_tensor)
-
-
-for b in range(5):
-    out_path = output_dir / f"aggregated_attribution_band_{BAND_NAMES[b]}.npy"
-    np.save(out_path, avg_tensor[b])
-
-    plt.figure(figsize=(10, 8))
+# === Plot each latent
+for i in range(N_LATENTS):
+    plt.figure(figsize=(10, 12))
     sns.heatmap(
-        avg_tensor[b],
+        avg_latents[i],
         cmap="viridis",
-        xticklabels=[f"Lag {i+1}" for i in range(5)],
-        yticklabels=ELECTRODE_NAMES,
+        xticklabels=[f"Lag {j+1}" for j in range(N_LAGS)],
+        yticklabels=[ELECTRODE_NAMES[i // 5] if i % 5 == 0 else "" for i in range(200)],
         cbar=True
     )
     plt.xlabel("Neural Lag")
-    plt.ylabel("Electrode")
-    plt.title(f"Aggregated Attribution — {BAND_NAMES[b]}")
+    plt.ylabel("Electrode × Band (200)")
+    plt.title(f"Latent {i} — Avg Attribution Across Patients")
     plt.tight_layout()
-    plt.savefig(output_dir / f"aggregated_attribution_band_{BAND_NAMES[b]}.png")
+    plt.savefig(output_dir / f"avg_latent_{i}_across_patients.png")
     plt.close()
 
-print("✅ All aggregated attribution maps saved and plotted.")
+# === Plot summary
+plt.figure(figsize=(10, 12))
+sns.heatmap(
+    summary_latent,
+    cmap="viridis",
+    xticklabels=[f"Lag {j+1}" for j in range(N_LAGS)],
+    yticklabels=[ELECTRODE_NAMES[i // 5] if i % 5 == 0 else "" for i in range(200)],
+    cbar=True
+)
+plt.xlabel("Neural Lag")
+plt.ylabel("Electrode × Band (200)")
+plt.title("Average Attribution Across All Latents and Patients")
+plt.tight_layout()
+plt.savefig(output_dir / "summary_avg_latent_attr_map.png")
+plt.close()
+
+print("✅ All latent-level aggregated maps saved and plotted.")
