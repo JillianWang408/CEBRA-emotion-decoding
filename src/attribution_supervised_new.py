@@ -20,14 +20,18 @@ from src.utils import load_fixed_cebra_model
 ATTRIBUTION_OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 
 def compute_and_plot_attribution(model):
-    # === Load full tensors ===
-    full_neural_tensor = torch.load(FULL_NEURAL_PATH)
-    full_emotion_tensor = torch.load(FULL_EMOTION_PATH)
+    # # === Load full tensors ===
+    # full_neural_tensor = torch.load(FULL_NEURAL_PATH)
+    # full_emotion_tensor = torch.load(FULL_EMOTION_PATH)
 
-    # === Load test indices and slice
-    test_idx = np.load("splits/test_idx.npy")
-    neural_tensor = full_neural_tensor[test_idx]
-    emotion_tensor = full_emotion_tensor[test_idx]
+    # # === Load test indices and slice
+    # test_idx = np.load("splits/test_idx.npy")
+    # neural_tensor = full_neural_tensor[test_idx]
+    # emotion_tensor = full_emotion_tensor[test_idx]
+    
+    emotion_tensor = torch.load(EMOTION_TENSOR_PATH)
+    neural_tensor = torch.load(NEURAL_TENSOR_PATH)
+    neural_tensor.requires_grad_(True)
 
     neural_tensor.requires_grad_(True)
     print(neural_tensor.shape)
@@ -70,7 +74,6 @@ def compute_and_plot_attribution(model):
     # === Process each latent → [40, 5, 5] → [200, 5]
     latent_maps = []
     for i in range(N_LATENTS):
-
         latent_attr = jf_mean[i].reshape(5, N_ELECTRODES, 5).transpose(1, 0, 2)  # [40, 5, 5]
         latent_attr_200x5 = latent_attr.reshape(N_ELECTRODES * 5, 5)  # [200, 5]
 
