@@ -8,7 +8,6 @@ __pycache__/
 
 # Data & models
 data/
-models/
 *.pt
 
 # Environment

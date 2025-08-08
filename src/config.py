@@ -39,16 +39,22 @@ PATIENT_CONFIG = {
 ec_code, output_dir = PATIENT_CONFIG[PATIENT_ID]
 
 #40*40
-# DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12_5"
-# MODEL_DIR = PROJECT_ROOT / "output_covariance" / output_dir / "models"
-# EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output_covariance" / output_dir / "evaluation_outputs"
-# ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output_covariance" / output_dir / "attribution_outputs"
+DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12_5"
+MODEL_DIR = PROJECT_ROOT / "output_covariance" / output_dir / "models"
+EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output_covariance" / output_dir / "evaluation_outputs"
+ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output_covariance" / output_dir / "attribution_outputs"
 
 #40*5*5
-DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12_5"
-MODEL_DIR = PROJECT_ROOT / "output" / output_dir / "models"
-EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output" / output_dir / "evaluation_outputs"
-ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output" / output_dir / "attribution_outputs"
+# DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12_5"
+# MODEL_DIR = PROJECT_ROOT / "output" / output_dir / "models"
+# EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output" / output_dir / "evaluation_outputs"
+# ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output" / output_dir / "attribution_outputs"
+
+
+#logistic
+MODEL_DIR_LG = PROJECT_ROOT / "output_lg" / output_dir / "models"
+EVALUATION_OUTPUT_DIR_LG = PROJECT_ROOT / "output_lg" / output_dir / "evaluation_outputs"
+ATTRIBUTION_OUTPUT_DIR_LG = PROJECT_ROOT / "output_lg" / output_dir / "attribution_outputs"
 
 # File paths
 NEURAL_PATH = DATA_DIR / "nrcRF_calc_Stim_StimNum_5_Nr_1_msBW_1000_movHeldOut_1.mat"

@@ -6,7 +6,6 @@ from pathlib import Path
 from cebra.data import DatasetxCEBRA
 from src.config import (
     FULL_NEURAL_PATH, FULL_EMOTION_PATH,
-    NEURAL_TENSOR_PATH, EMOTION_TENSOR_PATH, 
     MODEL_WEIGHTS_PATH, EMBEDDING_PATH, N_LATENTS
 )
 from src.utils import load_fixed_cebra_model

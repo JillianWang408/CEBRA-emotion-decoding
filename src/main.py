@@ -2,16 +2,15 @@ import subprocess
 import os
 
 # List of patient IDs you want to run the pipeline on
-# PATIENT_IDS = [1, 2, 9, 27, 28, 15, 22, 24, 29, 30, 31] 
-PATIENT_IDS = [1, 2, 9, 27] 
+PATIENT_IDS = [1, 2, 9, 27, 28, 15, 22, 24, 29, 30, 31] 
 
 # List of scripts to run sequentially for each patient
 PIPELINE_SCRIPTS = [
-    #"split_dataset",
-    #"train_supervised",
-    #"embedding",
-    #"evaluate_supervised",
-    "attribution_supervised_new"
+    "split_dataset",
+    "train_supervised",
+    "embedding",
+    "evaluate_supervised",
+    # "attribution_supervised_new"
 ]
 
 def run_pipeline_for_patient(pid):
