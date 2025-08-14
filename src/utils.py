@@ -2,6 +2,7 @@ import torch
 from cebra.models import init as init_model
 from src.config import NEURAL_TENSOR_PATH
 
+
 def load_fixed_cebra_model(model_path, name="offset10-model", num_units=256, num_output=20):
     # Infer input size
     num_neurons = torch.load(NEURAL_TENSOR_PATH).shape[1]

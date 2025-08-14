@@ -1,0 +1,33 @@
+{
+  "feature_dims": {
+    "n_lags": 5,
+    "n_electrodes": 40,
+    "n_bands": 5,
+    "n_features": 1000
+  },
+  "feature_ordering_assumption": "lag_first_then_band_within_each_electrode",
+  "frozen_hp": {
+    "lr": 0.05,
+    "max_steps": 5000,
+    "n_samples": 4,
+    "log_every": 50,
+    "cuda": false,
+    "cuda_device": 0
+  },
+  "classes_seen_final": [
+    0,
+    1,
+    5,
+    6,
+    8
+  ],
+  "paths": {
+    "final_model": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/239/models/gdec_gpmd/gpmd_model_final.joblib",
+    "fold_models_dir": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/239/models/gdec_gpmd/fold_models",
+    "coefs_raw": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/239/models/gdec_gpmd/coefs_raw.npy",
+    "coefs_by_lag_elect_band": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/239/models/gdec_gpmd/coefs_by_lag_elect_band.npy",
+    "intercept": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/239/models/gdec_gpmd/intercept.npy",
+    "fold_splits_root": "/Users/wangzihan/Desktop/Projects/xCEBRA/data/EC239/nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12_5"
+  },
+  "note": "Per-fold models trained with frozen HPs. Union model is for attribution/deployment only; no evaluation here."
+}

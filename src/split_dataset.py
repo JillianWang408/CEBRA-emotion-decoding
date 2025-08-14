@@ -3,7 +3,7 @@
 import numpy as np
 import torch
 from pathlib import Path
-from src.config import NEURAL_PATH, EMOTION_PATH
+from src.config import NEURAL_PATH, EMOTION_PATH, MODEL_DIR
 import mat73
 import scipy.io
 
@@ -21,10 +21,8 @@ train_idx = np.arange(0, split_idx)
 test_idx = np.arange(split_idx, n)
 
 # === Save
-split_dir = Path("splits")
-split_dir.mkdir(exist_ok=True)
-
-np.save(split_dir / "train_idx.npy", train_idx)
-np.save(split_dir / "test_idx.npy", test_idx)
+MODEL_DIR.mkdir(exist_ok=True)
+np.save(MODEL_DIR / "train_idx.npy", train_idx)
+np.save(MODEL_DIR / "test_idx.npy", test_idx)
 
 print(f"✅ Split complete: {len(train_idx)} train, {len(test_idx)} test")
