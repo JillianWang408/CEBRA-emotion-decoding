@@ -7,7 +7,7 @@ PATIENT_IDS = [1, 2, 9, 27, 28] #full coverage
 
 # List of scripts to run sequentially for each patient
 PIPELINE_SCRIPTS = [
-    #"gdec_training",
+    "gdec_training",
     "gdec_evaluation"
 ]
 

@@ -14,23 +14,21 @@
     "cuda": false,
     "cuda_device": 0
   },
-  "classes_seen_final": [
-    0,
-    1,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9
-  ],
   "paths": {
-    "final_model": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/301/models/gdec_gpmd/gpmd_model_final.joblib",
     "fold_models_dir": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/301/models/gdec_gpmd/fold_models",
+    "folds_root": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/301/models/gdec_gpmd/folds",
+    "patient_model": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/301/models/gdec_gpmd/gpmd_model_patient.joblib",
+    "patient_shift": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/301/models/gdec_gpmd/patient_shift.npy",
+    "patient_scaler_mean": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/301/models/gdec_gpmd/patient_scaler_mean.npy",
+    "patient_scaler_std": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/301/models/gdec_gpmd/patient_scaler_std.npy",
+    "classes_seen_patient": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/301/models/gdec_gpmd/classes_seen_patient.npy",
     "coefs_raw": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/301/models/gdec_gpmd/coefs_raw.npy",
     "coefs_by_lag_elect_band": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/301/models/gdec_gpmd/coefs_by_lag_elect_band.npy",
-    "intercept": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/301/models/gdec_gpmd/intercept.npy",
-    "fold_splits_root": "/Users/wangzihan/Desktop/Projects/xCEBRA/data/EC301/nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12_5"
+    "intercept": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/301/models/gdec_gpmd/intercept.npy"
   },
-  "note": "Per-fold models trained with frozen HPs. Union model is for attribution/deployment only; no evaluation here."
+  "notes": [
+    "Per-fold: caches best_shift.npy and scaler_* in fold directories; reuses if present.",
+    "Patient: caches patient_shift.npy and patient_scaler_* in OUT_DIR; reuses if present.",
+    "Fold models are for evaluation; patient model is for attribution/deployment only."
+  ]
 }

@@ -11,9 +11,7 @@ import re
 from sklearn.metrics import confusion_matrix, accuracy_score
 
 from src.config import (
-    DATA_DIR, MODEL_DIR, NEURAL_PATH, EMOTION_PATH, N_ELECTRODES,
-    FULL_NEURAL_PATH, FULL_EMOTION_PATH, EVALUATION_OUTPUT_DIR, EMOTION_MAP
-)
+    NEURAL_PATH, EMOTION_PATH, EMOTION_MAP, FOLD_MODELS_DIR, FOLDS_DIR, RESULTS_DIR)
 
 # ---------- JAX (CPU) + compatibility shim for gdec importing jax.config ----------
 import os, sys, types, time, inspect
@@ -29,14 +27,7 @@ except Exception:
     
 import gdec # safe after shim
 
-
-# ---------- Paths ----------
-OUT_DIR = MODEL_DIR / "gdec_gpmd"                 
-FOLD_MODELS_DIR = OUT_DIR / "fold_models"
-FOLDS_DIR = DATA_DIR                 
-RESULTS_DIR = Path(EVALUATION_OUTPUT_DIR) / "cv"   
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-
 
 # ---------- Robust fold-id swapping (handles ..._1.mat, ...movHeldOut_1.mat, etc.) ----------
 _fold_suffix_re = re.compile(r"_(\d+)\.mat$")
@@ -52,9 +43,20 @@ def _load_fold_xy(fold_id: int):
     y = scipy.io.loadmat(y_path)['resp'].flatten().astype(np.int64)  # [T]
     return X, y
 
+# ---------- Shift utility ----------
+def _shift_labels(y: np.ndarray, shift: int) -> np.ndarray:
+    """Shift labels; invalid positions set to -1."""
+    y_shift = np.full_like(y, fill_value=-1)
+    if shift > 0:
+        y_shift[shift:] = y[:-shift]
+    elif shift < 0:
+        y_shift[:shift] = y[-shift:]
+    else:
+        y_shift[:] = y
+    return y_shift
+
 # ---------- Label names ----------
 def _ids_to_names(id_list):
-    # EMOTION_MAP can be dict or list-like
     if isinstance(EMOTION_MAP, dict):
         return [EMOTION_MAP.get(int(i), str(i)) for i in id_list]
     else:
@@ -93,44 +95,68 @@ def _plot_confusion(cm, class_ids, title, subtitle, save_path, normalize=False):
 
 def main():
     pid = os.environ.get("PATIENT_ID", "unknown")
-    print(f"[eval_cv] Patient {pid}: evaluating 5 folds with their own models / splits")
+    print(f"[eval_cv] Patient {pid}: evaluating 5 folds with their own models / best shift / scaler")
 
     per_fold_acc = []
     for fold_id in range(1, 6):
-        model_path = FOLD_MODELS_DIR / f"fold_{fold_id}.joblib"
+        model_path   = FOLD_MODELS_DIR / f"fold_{fold_id}.joblib"
         classes_path = FOLD_MODELS_DIR / f"classes_seen_fold_{fold_id}.npy"
-        split_dir = FOLDS_DIR / f"fold_{fold_id}"
-        test_idx_path = split_dir / "test_idx.npy"
+        fold_dir = FOLDS_DIR / f"fold_{fold_id}"
+        test_idx_path  = fold_dir / "test_idx.npy"
+        best_shift_path = fold_dir / "best_shift.npy"
+        mu_path         = fold_dir / "scaler_mean.npy"
+        std_path        = fold_dir / "scaler_std.npy"
 
         # Existence checks
-        if not model_path.exists():
-            print(f"[eval_cv] WARNING: missing model for fold {fold_id} → {model_path}")
-            continue
-        if not classes_path.exists():
-            print(f"[eval_cv] WARNING: missing classes_seen for fold {fold_id} → {classes_path}")
-            continue
-        if not test_idx_path.exists():
-            print(f"[eval_cv] WARNING: missing test_idx for fold {fold_id} → {test_idx_path}")
+        missing = []
+        for pth, tag in [(model_path,"model"), (classes_path,"classes_seen"),
+                         (test_idx_path,"test_idx"), (best_shift_path,"best_shift"),
+                         (mu_path,"scaler_mean"), (std_path,"scaler_std")]:
+            if not pth.exists():
+                missing.append(tag)
+        if missing:
+            print(f"[eval_cv] WARNING: fold {fold_id} missing {missing}; skipping this fold.")
             continue
 
-        # Load artifacts and data for THIS fold
-        model = joblib.load(model_path)
+        # Load artifacts & data
+        model        = joblib.load(model_path)
         classes_seen = np.load(classes_path)
-        X, y = _load_fold_xy(fold_id)
-        test_idx = np.load(test_idx_path)
+        X, y         = _load_fold_xy(fold_id)
+        test_idx     = np.load(test_idx_path)
+        best_shift   = int(np.load(best_shift_path))
+        mu           = np.load(mu_path).astype(np.float32)
+        std          = np.load(std_path).astype(np.float32)
 
-        X_test, y_test = X[test_idx], y[test_idx]
+        # Apply best shift to labels and drop invalid edges BEFORE test slicing
+        y_shifted = _shift_labels(y, best_shift)
+        valid = (y_shifted != -1)
+
+        # Keep only test rows that remain valid after shift
+        test_idx_valid = test_idx[valid[test_idx]]
+        if test_idx_valid.size == 0:
+            print(f"[eval_cv] fold {fold_id}: no valid test rows after applying shift {best_shift:+d}; skipping")
+            continue
+
+        X_test = X[test_idx_valid]
+        y_test = y_shifted[test_idx_valid]
+
+        # Restrict to seen classes (in-vocab)
         mask_seen = np.isin(y_test, classes_seen)
         if not np.any(mask_seen):
             print(f"[eval_cv] fold {fold_id}: no test samples in seen classes; skipping")
             continue
         Xs, ys = X_test[mask_seen], y_test[mask_seen]
 
-        # Predict (model outputs dense indices 0..K_seen-1); map back to original label IDs
+        # Standardize with fold's training scaler
+        std_safe = std.copy()
+        std_safe[std_safe < 1e-8] = 1.0
+        Xs = (Xs - mu) / std_safe
+
+        # Predict (dense indices 0..K_seen-1 → map back to original IDs)
         y_pred_dense = model.predict(Xs)
         y_pred = classes_seen[y_pred_dense]
 
-        # Metrics and matrices
+        # Metrics & confusion matrices
         acc = accuracy_score(ys, y_pred)
         per_fold_acc.append(acc)
         labels = classes_seen
@@ -146,7 +172,9 @@ def main():
 
         # Plots
         supports = cm_counts.sum(axis=1)
-        subtitle = f"Patient: {pid} | Fold: {fold_id} | Valid: {labels.tolist()} | Support per row: {supports.tolist()} | In-vocab acc: {acc:.3f}"
+        subtitle = (f"Patient: {pid} | Fold: {fold_id} | Shift: {best_shift:+d} | "
+                    f"Valid classes: {labels.tolist()} | Support per row: {supports.tolist()} | "
+                    f"In-vocab acc: {acc:.3f}")
         _plot_confusion(cm_counts, labels,
                         f"Confusion (counts) — fold {fold_id}",
                         subtitle,
@@ -171,7 +199,7 @@ def main():
         print(f"[eval_cv] mean in-vocab acc over folds: {mean_acc:.3f} ± {std_acc:.3f}")
         print(f"[eval_cv] saved results to {RESULTS_DIR}")
     else:
-        print("[eval_cv] no folds evaluated (missing models/splits or no seen-class samples).")
+        print("[eval_cv] no folds evaluated (missing artifacts or no seen-class samples).")
 
 if __name__ == "__main__":
     main()

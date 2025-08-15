@@ -57,6 +57,11 @@ MODEL_DIR = PROJECT_ROOT / "output_gdec" / output_dir / "models"
 EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output_gdec" / output_dir / "evaluation_outputs"
 ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output_gdec" / output_dir / "attribution_outputs"
 
+OUT_DIR = MODEL_DIR / "gdec_gpmd"
+FOLD_MODELS_DIR = OUT_DIR / "fold_models"   # models + classes per fold
+FOLDS_DIR = OUT_DIR / "folds"            # per-fold split + shift + scaler
+RESULTS_DIR = Path(EVALUATION_OUTPUT_DIR) / "cv"
+
 GDEC_HP = dict(lr=0.05, max_steps=5000, n_samples=4, log_every=50, cuda=False, cuda_device=0)
 # File paths
 NEURAL_PATH = DATA_DIR / "nrcRF_calc_Stim_StimNum_5_Nr_1_msBW_1000_movHeldOut_1.mat"
