@@ -74,7 +74,7 @@ def compute_and_plot_attribution(model):
     # === Process each latent → [40, 5, 5] → [200, 5]
     latent_maps = []
     for i in range(N_LATENTS):
-        latent_attr = jf_mean[i].reshape(5, N_ELECTRODES, 5).transpose(1, 0, 2)  # [40, 5, 5]
+        latent_attr = jf_mean[i].reshape(5, N_ELECTRODES, 5).transpose(1, 2, 0)  # [40, 5, 5 bands-->become column]
         latent_attr_200x5 = latent_attr.reshape(N_ELECTRODES * 5, 5)  # [200, 5]
 
         # Mask: expand electrode_mask [40] → [200]

@@ -10,8 +10,8 @@ import re
 
 from sklearn.metrics import confusion_matrix, accuracy_score
 
-from src.config import (
-    NEURAL_PATH, EMOTION_PATH, EMOTION_MAP, FOLD_MODELS_DIR, FOLDS_DIR, RESULTS_DIR)
+from src.config import (MODEL_DIR, 
+    NEURAL_PATH, EMOTION_PATH, EMOTION_MAP, FOLD_MODELS_DIR, FOLDS_DIR, EVALUATION_OUTPUT_DIR)
 
 # ---------- JAX (CPU) + compatibility shim for gdec importing jax.config ----------
 import os, sys, types, time, inspect
@@ -27,6 +27,7 @@ except Exception:
     
 import gdec # safe after shim
 
+RESULTS_DIR = Path(EVALUATION_OUTPUT_DIR) / "cv"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # ---------- Robust fold-id swapping (handles ..._1.mat, ...movHeldOut_1.mat, etc.) ----------
@@ -92,6 +93,17 @@ def _plot_confusion(cm, class_ids, title, subtitle, save_path, normalize=False):
     fig.text(0.5, 0.01, subtitle, ha="center", va="bottom", fontsize=9)
     fig.tight_layout()
     fig.savefig(save_path, bbox_inches="tight"); plt.close(fig)
+
+def prob_smooth(proba: np.ndarray, w: int = 7) -> np.ndarray:
+    """Centered moving average of class probabilities. proba: [T,K], w odd."""
+    if w <= 1 or w % 2 == 0:
+        return proba
+    r = w // 2
+    out = np.empty_like(proba)
+    for t in range(len(proba)):
+        lo, hi = max(0, t-r), min(len(proba), t+r+1)
+        out[t] = proba[lo:hi].mean(axis=0)
+    return out
 
 def main():
     pid = os.environ.get("PATIENT_ID", "unknown")

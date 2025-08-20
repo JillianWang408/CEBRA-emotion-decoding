@@ -44,7 +44,7 @@ ec_code, output_dir = PATIENT_CONFIG[PATIENT_ID]
 # EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output_covariance" / output_dir / "evaluation_outputs"
 # ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output_covariance" / output_dir / "attribution_outputs"
 
-#40*5*5
+# #40*5*5
 # DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12_5"
 # MODEL_DIR = PROJECT_ROOT / "output" / output_dir / "models"
 # EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output" / output_dir / "evaluation_outputs"
@@ -53,16 +53,22 @@ ec_code, output_dir = PATIENT_CONFIG[PATIENT_ID]
 
 #logistic
 DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12_5"
+
+# gdec:
 MODEL_DIR = PROJECT_ROOT / "output_gdec" / output_dir / "models"
+OUT_DIR = Path(MODEL_DIR)  / "gdec_gpmd"
 EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output_gdec" / output_dir / "evaluation_outputs"
 ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output_gdec" / output_dir / "attribution_outputs"
 
-OUT_DIR = MODEL_DIR / "gdec_gpmd"
-FOLD_MODELS_DIR = OUT_DIR / "fold_models"   # models + classes per fold
-FOLDS_DIR = OUT_DIR / "folds"            # per-fold split + shift + scaler
-RESULTS_DIR = Path(EVALUATION_OUTPUT_DIR) / "cv"
+#glmnet:
+# MODEL_DIR = PROJECT_ROOT / "output_glmnet" / output_dir / "models"
+# OUT_DIR = Path(MODEL_DIR) / "glmnet"
+# EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output_glmnet" / output_dir / "evaluation_outputs"
+# ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output_glmnet" / output_dir / "attribution_outputs"
 
-GDEC_HP = dict(lr=0.05, max_steps=5000, n_samples=4, log_every=50, cuda=False, cuda_device=0)
+FOLD_MODELS_DIR = OUT_DIR / "fold_models"
+FOLDS_DIR = OUT_DIR / "folds"
+
 # File paths
 NEURAL_PATH = DATA_DIR / "nrcRF_calc_Stim_StimNum_5_Nr_1_msBW_1000_movHeldOut_1.mat"
 EMOTION_PATH = DATA_DIR / "nrcRF_calc_Resp_chan_1_movHeldOut_1.mat"

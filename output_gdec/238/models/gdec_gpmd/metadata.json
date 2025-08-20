@@ -6,8 +6,14 @@
     "n_features": 1000
   },
   "feature_ordering_assumption": "lag_first_then_band_within_each_electrode",
-  "frozen_hp": {
-    "lr": 0.05,
+  "kernel": {
+    "type": "rbf_lag_kron_Ichan",
+    "ell_lag": 1.0,
+    "var_lag": 1.0,
+    "path": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/feature_kernel_lagmajor.npy"
+  },
+  "best_hp": {
+    "lr": 0.02,
     "max_steps": 5000,
     "n_samples": 4,
     "log_every": 50,
@@ -15,20 +21,20 @@
     "cuda_device": 0
   },
   "paths": {
+    "final_model": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/gpmd_model_best.joblib",
     "fold_models_dir": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/fold_models",
-    "folds_root": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/folds",
-    "patient_model": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/gpmd_model_patient.joblib",
+    "folds_meta_root": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/folds",
     "patient_shift": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/patient_shift.npy",
     "patient_scaler_mean": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/patient_scaler_mean.npy",
     "patient_scaler_std": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/patient_scaler_std.npy",
     "classes_seen_patient": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/classes_seen_patient.npy",
-    "coefs_raw": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/coefs_raw.npy",
-    "coefs_by_lag_elect_band": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/coefs_by_lag_elect_band.npy",
-    "intercept": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/intercept.npy"
+    "cv_results": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/cv_results_gdec.json",
+    "best_hp_file": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/best_hp_gdec.json"
   },
   "notes": [
-    "Per-fold: caches best_shift.npy and scaler_* in fold directories; reuses if present.",
-    "Patient: caches patient_shift.npy and patient_scaler_* in OUT_DIR; reuses if present.",
-    "Fold models are for evaluation; patient model is for attribution/deployment only."
+    "Per-fold: caches split, best_shift, scaler; retrain fold model only if missing or --force-fold-models.",
+    "Grid search: cached in best_hp_gdec.json/cv_results_gdec.json; reuse unless --force-grid.",
+    "Patient model: uses majority-vote shift and patient-level scaler; cached unless --force-final.",
+    "All stages use the same lag-major kernel cached at feature_kernel_lagmajor.npy."
   ]
 }
