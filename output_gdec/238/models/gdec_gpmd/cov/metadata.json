@@ -1,0 +1,39 @@
+{
+  "feature_mode": "cov",
+  "feature_dims": {
+    "n_electrodes": 40,
+    "n_features": 820
+  },
+  "kernel": {
+    "mode": "cov",
+    "type": "none",
+    "ell_lag": null,
+    "var_lag": null,
+    "path": ""
+  },
+  "best_hp": {
+    "lr": 0.05,
+    "max_steps": 5000,
+    "n_samples": 8,
+    "log_every": 50,
+    "cuda": false,
+    "cuda_device": 0
+  },
+  "paths": {
+    "final_model": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/cov/gpmd_model_best.joblib",
+    "fold_models_dir": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/fold_models/cov",
+    "folds_meta_root": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/folds/cov",
+    "patient_shift": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/cov/patient_shift.npy",
+    "patient_scaler_mean": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/cov/patient_scaler_mean.npy",
+    "patient_scaler_std": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/cov/patient_scaler_std.npy",
+    "classes_seen_patient": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/cov/classes_seen_patient.npy",
+    "cv_results": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/cov/cv_results_gdec.json",
+    "best_hp_file": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_gdec/238/models/gdec_gpmd/cov/best_hp_gdec.json"
+  },
+  "notes": [
+    "Per-fold: caches split, best_shift, scaler; retrains fold model only if missing or --force-fold-models.",
+    "Grid search: cached in best_hp_gdec.json/cv_results_gdec.json; reuse unless --force-grid.",
+    "Patient model: majority-vote shift + patient-level scaler; cached unless --force-final.",
+    "Kernels: lags \u2192 I_band \u2297 I_elec \u2297 K_lag; cov \u2192 none."
+  ]
+}

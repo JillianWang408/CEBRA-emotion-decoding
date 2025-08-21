@@ -38,8 +38,9 @@ PATIENT_CONFIG = {
 
 ec_code, output_dir = PATIENT_CONFIG[PATIENT_ID]
 
+#-----------XCEBRA-----------
 #40*40
-#DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12_5"
+# DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12_5"
 # MODEL_DIR = PROJECT_ROOT / "output_covariance" / output_dir / "models"
 # EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output_covariance" / output_dir / "evaluation_outputs"
 # ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output_covariance" / output_dir / "attribution_outputs"
@@ -51,8 +52,12 @@ ec_code, output_dir = PATIENT_CONFIG[PATIENT_ID]
 # ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output" / output_dir / "attribution_outputs"
 
 
-#logistic
-DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12_5"
+#----------logistic------------
+#1000 features
+#DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12_5"
+
+#covariance
+DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12_5"
 
 # gdec:
 MODEL_DIR = PROJECT_ROOT / "output_gdec" / output_dir / "models"
@@ -60,13 +65,7 @@ OUT_DIR = Path(MODEL_DIR)  / "gdec_gpmd"
 EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output_gdec" / output_dir / "evaluation_outputs"
 ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output_gdec" / output_dir / "attribution_outputs"
 
-#glmnet:
-# MODEL_DIR = PROJECT_ROOT / "output_glmnet" / output_dir / "models"
-# OUT_DIR = Path(MODEL_DIR) / "glmnet"
-# EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output_glmnet" / output_dir / "evaluation_outputs"
-# ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output_glmnet" / output_dir / "attribution_outputs"
-
-FOLD_MODELS_DIR = OUT_DIR / "fold_models"
+FOLD_MODELS_DIR = OUT_DIR / "fold_models" 
 FOLDS_DIR = OUT_DIR / "folds"
 
 # File paths
