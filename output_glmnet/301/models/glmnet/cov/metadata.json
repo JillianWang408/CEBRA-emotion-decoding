@@ -1,0 +1,33 @@
+{
+  "feature_mode": "cov",
+  "feature_dims": {
+    "n_electrodes": 40,
+    "n_features": 820
+  },
+  "best_hp": {
+    "C": 10.0,
+    "l1_ratio": 0.9,
+    "max_iter": 20000,
+    "tol": 0.001,
+    "class_weight": "balanced",
+    "n_jobs": -1,
+    "random_state": 0
+  },
+  "paths": {
+    "final_model": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_glmnet/301/models/glmnet/cov/glmnet_model_best.joblib",
+    "fold_models_dir": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_glmnet/301/models/glmnet/fold_models/cov",
+    "folds_meta_root": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_glmnet/301/models/glmnet/folds/cov",
+    "patient_shift": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_glmnet/301/models/glmnet/cov/patient_shift.npy",
+    "patient_scaler_mean": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_glmnet/301/models/glmnet/cov/patient_scaler_mean.npy",
+    "patient_scaler_std": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_glmnet/301/models/glmnet/cov/patient_scaler_std.npy",
+    "classes_seen_patient": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_glmnet/301/models/glmnet/cov/classes_seen_patient.npy",
+    "cv_results": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_glmnet/301/models/glmnet/cov/cv_results_glmnet.json",
+    "best_hp_file": "/Users/wangzihan/Desktop/Projects/xCEBRA/output_glmnet/301/models/glmnet/cov/best_hp_glmnet.json"
+  },
+  "notes": [
+    "Per-fold: caches split, best_shift, scaler; retrain fold model only if missing or --force-fold-models.",
+    "Grid search: cached in best_hp_glmnet.json/cv_results_glmnet.json; reuse unless --force-grid.",
+    "Patient model: uses majority-vote shift and patient-level scaler; cached unless --force-final.",
+    "Feature modes: lags (1000 features) or cov (820 upper-triangle, auto-vech from 1600 if given)."
+  ]
+}

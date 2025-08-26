@@ -19,9 +19,6 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # Patient configuration dictionary
 PATIENT_CONFIG = {
-    9.0:      ("EC272", "272.0"),
-    27.0:      ("EC301","301.0"),
-
     1:    ("EC238", "238"),
     2:    ("EC239", "239"),
     9:    ("EC272", "272"),
@@ -39,34 +36,40 @@ PATIENT_CONFIG = {
 ec_code, output_dir = PATIENT_CONFIG[PATIENT_ID]
 
 #-----------XCEBRA-----------
-#40*40
+# cov
 # DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12_5"
-# MODEL_DIR = PROJECT_ROOT / "output_covariance" / output_dir / "models"
-# EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output_covariance" / output_dir / "evaluation_outputs"
-# ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output_covariance" / output_dir / "attribution_outputs"
+# MODEL_DIR = PROJECT_ROOT / "output_xCEBRA_cov" / output_dir / "models"
+# EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output_xCEBRA_cov" / output_dir / "evaluation_outputs"
+# ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output_xCEBRA_cov" / output_dir / "attribution_outputs"
 
-# #40*5*5
-# DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12_5"
-# MODEL_DIR = PROJECT_ROOT / "output" / output_dir / "models"
-# EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output" / output_dir / "evaluation_outputs"
-# ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output" / output_dir / "attribution_outputs"
+# lags
+DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12_5"
+MODEL_DIR = PROJECT_ROOT / "output_xCEBRA_lags" / output_dir / "models"
+EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output_xCEBRA_lags" / output_dir / "evaluation_outputs"
+ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output_xCEBRA_lags" / output_dir / "attribution_outputs"
 
 
 #----------logistic------------
-#1000 features
+#lags
 #DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12_5"
 
-#covariance
-DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12_5"
+#cov
+#DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC_1   2   5   6   7   8   9  10  11  12_5"
 
 # gdec:
-MODEL_DIR = PROJECT_ROOT / "output_gdec" / output_dir / "models"
-OUT_DIR = Path(MODEL_DIR)  / "gdec_gpmd"
-EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output_gdec" / output_dir / "evaluation_outputs"
-ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output_gdec" / output_dir / "attribution_outputs"
+# MODEL_DIR = PROJECT_ROOT / "output_gdec" / output_dir / "models"
+# OUT_DIR = Path(MODEL_DIR)  / "gdec_gpmd"
+# EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output_gdec" / output_dir / "evaluation_outputs"
+# ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output_gdec" / output_dir / "attribution_outputs"
 
-FOLD_MODELS_DIR = OUT_DIR / "fold_models" 
-FOLDS_DIR = OUT_DIR / "folds"
+# glmnet:
+# MODEL_DIR = PROJECT_ROOT / "output_glmnet" / output_dir / "models"
+# OUT_DIR = Path(MODEL_DIR)  / "glmnet"
+# EVALUATION_OUTPUT_DIR = PROJECT_ROOT / "output_glmnet" / output_dir / "evaluation_outputs"
+# ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output_glmnet" / output_dir / "attribution_outputs"
+
+# FOLD_MODELS_DIR = OUT_DIR / "fold_models" 
+# FOLDS_DIR = OUT_DIR / "folds"
 
 # File paths
 NEURAL_PATH = DATA_DIR / "nrcRF_calc_Stim_StimNum_5_Nr_1_msBW_1000_movHeldOut_1.mat"
@@ -105,5 +108,27 @@ ELECTRODE_NAMES = [
     'RINS1', 'RINS2', 'RINS3', 'RINS4',
     'RAD1', 'RAD2', 'RAD3', 'RAD4'
 ]
+
+NODE_MAP = {
+    # Orbitofrontal Cortex — Left (LOFC)
+    "LOFC_Medial":  ["LOFC1", "LOFC2", "LOFC3", "LOFC4"],
+    "LOFC_Lateral": ["LOFC7", "LOFC8", "LOFC9", "LOFC10"],
+
+    # Orbitofrontal Cortex — Right (ROFC)
+    "ROFC_Medial":  ["ROFC1", "ROFC2", "ROFC3", "ROFC4"],
+    "ROFC_Lateral": ["ROFC7", "ROFC8", "ROFC9", "ROFC10"],
+
+    # Anterior Dorsal Cingulate
+    "LAD": ["LAD1", "LAD2", "LAD3", "LAD4"],
+    "RAD": ["RAD1", "RAD2", "RAD3", "RAD4"],
+
+    # Insula
+    "LINS": ["LINS1", "LINS2", "LINS3", "LINS4"],
+    "RINS": ["RINS1", "RINS2", "RINS3", "RINS4"],
+
+    # Cingulate
+    "LC": ["LC1", "LC2", "LC3", "LC4"],
+    "RC": ["RC1", "RC2", "RC3", "RC4"],
+}
 
 N_ELECTRODES = 40

@@ -5,36 +5,39 @@ from src.config import NEURAL_TENSOR_PATH
 import numpy as np
 from pathlib import Path
 
-def load_fixed_cebra_model(model_path, name="offset10-model", num_units=256, num_output=20):
-    # Infer input size
-    num_neurons = torch.load(NEURAL_TENSOR_PATH).shape[1]
-
-    # Initialize model
-    model = init_model(
-        name=name,
-        num_neurons=num_neurons,
-        num_units=num_units,
-        num_output=num_output
-    )
-
-    # Load and fix state_dict
+def load_fixed_cebra_model(model_path, name="offset10-model",
+                           num_units=256, num_output=20, num_neurons=None):
+    # Load weights first so we can infer when needed
     raw_state_dict = torch.load(model_path, map_location="cpu")
-    fixed_state_dict = {}
 
+    # Fix keys (your original logic)
+    fixed_state_dict = {}
     for k, v in raw_state_dict.items():
         if k.startswith("module."):
             k = k[len("module."):]
         k = k.replace(".module.", ".")
-
         if k.startswith("net.2.0"):
             k = k.replace("net.2.0", "net.2.module.0")
         elif k.startswith("net.3.0"):
             k = k.replace("net.3.0", "net.3.module.0")
         elif k.startswith("net.4.0"):
             k = k.replace("net.4.0", "net.4.module.0")
-
         fixed_state_dict[k] = v
 
+    # If caller didn't specify, infer input channels from first Conv1d weight
+    if num_neurons is None:
+        inferred = None
+        for k, v in fixed_state_dict.items():
+            if k.endswith("weight") and v.ndim == 3:  # Conv1d: [out_ch, in_ch, k]
+                inferred = int(v.shape[1])
+                break
+        if inferred is None:
+            raise RuntimeError("Could not infer num_neurons from state_dict; please pass num_neurons explicitly.")
+        num_neurons = inferred
+
+    # Build the correct-arity model and load weights
+    model = init_model(name=name, num_neurons=num_neurons,
+                       num_units=num_units, num_output=num_output)
     model.load_state_dict(fixed_state_dict)
     model.eval()
     return model

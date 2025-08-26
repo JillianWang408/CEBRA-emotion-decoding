@@ -11,13 +11,11 @@ import argparse
 import subprocess
 
 # Default patients
-# PATIENT_IDS = [1, 2, 9, 27, 28, 15, 22, 24, 29, 30, 31]
+#PATIENT_IDS = [1, 2, 9, 27, 28, 15, 22, 24, 29, 30, 31]
 PATIENT_IDS = [1, 2, 9, 27, 28]
 
 PIPELINE_SCRIPTS = [
-    #"gdec_model_finetune",
-    #"gdec_evaluation",
-    "gdec_attribution_weights",
+    "single_node_eval"
 ]
 
 def build_forwarded_args_for(script: str, args: argparse.Namespace):

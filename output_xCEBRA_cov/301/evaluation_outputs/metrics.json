@@ -1,0 +1,8 @@
+{
+  "patient": "27",
+  "accuracy_mean": 0.5778301886792453,
+  "accuracy_std": 0.0,
+  "r2_behavior": 0.08249711990356445,
+  "n_test": 424,
+  "note": "xCEBRA single split; std=0.0"
+}

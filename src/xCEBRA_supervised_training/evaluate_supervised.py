@@ -36,7 +36,6 @@ def evaluate_embedding():
     R2_behavior = linear_model_behavior.fit(X_behavior, y).score(X_behavior, y)
     print(f"[R²] Behavior contrastive   : {R2_behavior:.2f}")
 
-
     # === KNN Classification (accuracy)
     knn_model_behavior = KNeighborsClassifier(n_neighbors=5)
     knn_model_behavior.fit(X_behavior, y)

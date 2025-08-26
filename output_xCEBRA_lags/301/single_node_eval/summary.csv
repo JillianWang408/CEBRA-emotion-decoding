@@ -1,0 +1,10 @@
+patient_code,patient_alt,node,acc,R2_behavior,n_test,embedding_len,test_idx_len_used,embedding_path
+EC301,301,LC,0.6506849315068494,0.07326298952102661,438,2186,438,output_xCEBRA_lags/301/single_node/LC/embedding.pt
+EC301,301,LINS,0.6232876712328768,0.06905543804168701,438,2186,438,output_xCEBRA_lags/301/single_node/LINS/embedding.pt
+EC301,301,LOFC_Lateral,0.6210045662100456,0.036138176918029785,438,2186,438,output_xCEBRA_lags/301/single_node/LOFC_Lateral/embedding.pt
+EC301,301,LOFC_Medial,0.632420091324201,0.08661991357803345,438,2186,438,output_xCEBRA_lags/301/single_node/LOFC_Medial/embedding.pt
+EC301,301,RAD,0.6552511415525114,0.137967050075531,438,2186,438,output_xCEBRA_lags/301/single_node/RAD/embedding.pt
+EC301,301,RC,0.6232876712328768,0.088481605052948,438,2186,438,output_xCEBRA_lags/301/single_node/RC/embedding.pt
+EC301,301,RINS,0.6666666666666666,0.04319429397583008,438,2186,438,output_xCEBRA_lags/301/single_node/RINS/embedding.pt
+EC301,301,ROFC_Lateral,0.639269406392694,0.06798088550567627,438,2186,438,output_xCEBRA_lags/301/single_node/ROFC_Lateral/embedding.pt
+EC301,301,ROFC_Medial,0.6164383561643836,0.07804161310195923,438,2186,438,output_xCEBRA_lags/301/single_node/ROFC_Medial/embedding.pt
