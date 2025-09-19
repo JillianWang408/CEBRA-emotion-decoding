@@ -15,7 +15,7 @@ import subprocess
 PATIENT_IDS = [1, 2, 9, 27, 28]
 
 PIPELINE_SCRIPTS = [
-    "single_node_eval"
+    "single_node_pairing_eval",
 ]
 
 def build_forwarded_args_for(script: str, args: argparse.Namespace):
