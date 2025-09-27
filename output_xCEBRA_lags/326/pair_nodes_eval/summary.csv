@@ -1,0 +1,17 @@
+pair,R2_behavior,acc,confusion_path
+LC__RC,0.0729,0.5948,output_xCEBRA_lags/326/pair_nodes_eval/LC__RC_confusion.png
+LOFC_Lateral__LC,0.0970,0.5688,output_xCEBRA_lags/326/pair_nodes_eval/LOFC_Lateral__LC_confusion.png
+LOFC_Lateral__RC,0.0924,0.5558,output_xCEBRA_lags/326/pair_nodes_eval/LOFC_Lateral__RC_confusion.png
+LOFC_Lateral__ROFC_Lateral,0.0979,0.6286,output_xCEBRA_lags/326/pair_nodes_eval/LOFC_Lateral__ROFC_Lateral_confusion.png
+LOFC_Lateral__ROFC_Medial,0.0927,0.6364,output_xCEBRA_lags/326/pair_nodes_eval/LOFC_Lateral__ROFC_Medial_confusion.png
+LOFC_Medial__LC,0.0500,0.5584,output_xCEBRA_lags/326/pair_nodes_eval/LOFC_Medial__LC_confusion.png
+LOFC_Medial__LOFC_Lateral,0.1065,0.5844,output_xCEBRA_lags/326/pair_nodes_eval/LOFC_Medial__LOFC_Lateral_confusion.png
+LOFC_Medial__RC,0.0900,0.5506,output_xCEBRA_lags/326/pair_nodes_eval/LOFC_Medial__RC_confusion.png
+LOFC_Medial__ROFC_Lateral,0.0595,0.5792,output_xCEBRA_lags/326/pair_nodes_eval/LOFC_Medial__ROFC_Lateral_confusion.png
+LOFC_Medial__ROFC_Medial,0.1302,0.5481,output_xCEBRA_lags/326/pair_nodes_eval/LOFC_Medial__ROFC_Medial_confusion.png
+ROFC_Lateral__LC,0.0582,0.5870,output_xCEBRA_lags/326/pair_nodes_eval/ROFC_Lateral__LC_confusion.png
+ROFC_Lateral__RC,0.0815,0.5610,output_xCEBRA_lags/326/pair_nodes_eval/ROFC_Lateral__RC_confusion.png
+ROFC_Medial__LC,0.0565,0.5403,output_xCEBRA_lags/326/pair_nodes_eval/ROFC_Medial__LC_confusion.png
+ROFC_Medial__RC,0.1151,0.5870,output_xCEBRA_lags/326/pair_nodes_eval/ROFC_Medial__RC_confusion.png
+ROFC_Medial__ROFC_Lateral,0.0853,0.6000,output_xCEBRA_lags/326/pair_nodes_eval/ROFC_Medial__ROFC_Lateral_confusion.png
+NULL,0.0242,0.4260,output_xCEBRA_lags/326/pair_nodes_eval/NULL_confusion.png

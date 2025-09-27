@@ -43,8 +43,6 @@ def load_fixed_cebra_model(model_path, name="offset10-model",
     return model
 
 # ---------- Kernel utilities ----------
-
-
 def rbf_1d_grid(n: int, lengthscale: float, variance: float = 1.0, jitter: float = 1e-6) -> np.ndarray:
     """
     RBF kernel on a 1D integer grid {0,1,...,n-1}.
