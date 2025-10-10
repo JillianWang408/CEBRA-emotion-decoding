@@ -6,19 +6,21 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# Default patients
-# Default patients
-PATIENT_IDS = [1, 9, 27, 28, 15, 22, 24, 29, 30, 31] #2(239) not working well
 
+# Default patients
+# Default patients
+PATIENT_IDS = [1, 2, 9, 27, 28, 15, 22, 24, 29, 30, 31] #2(239) not working well
 #PATIENT_IDS = [1, 9, 27, 28]
 #PATIENT_IDS = [29, 30, 31]
 
 PIPELINE_SCRIPTS = [
-    #"single_node_training",
-    #"single_node_eval",
-    # "single_node_pairing_training",
-    #"single_node_pairing_eval",
+    #"single_node_encoding",
+    #"single_node_decoding",
+    #"single_node_pairing_encoding",
+    #"single_node_pairing_decoding",
     "single_node_pairing_aggregation",
+    #"OFC_training",
+    #"evaluate_supervised"
 ]
 
 
@@ -43,7 +45,7 @@ def aggregate_group(patients):
     zmats = []
     for pid in patients:
         _, patient_id = PATIENT_CONFIG[pid]
-        zpath = Path(f"./output_xCEBRA_lags/{patient_id}/pair_nodes_eval/zscore_matrix.csv")
+        zpath = Path(f"./output_xCEBRA_lags/{patient_id}/pair_nodes_eval_new/zscore_matrix.csv")
         if not zpath.exists():
             print(f"[warn] no zscore_matrix.csv for patient {patient_id}, skipping")
             continue
@@ -55,7 +57,7 @@ def aggregate_group(patients):
 
     # average across patients
     group_z = np.nanmean(zmats, axis=0)
-    group_out = Path("./output_xCEBRA_lags/aggregate_outputs/aggregate_pair")
+    group_out = Path("./output_xCEBRA_lags/aggregate_outputs_new/aggregate_pair")
     group_out.mkdir(parents=True, exist_ok=True)
 
     # save CSV
@@ -127,8 +129,8 @@ def main():
     for pid in args.patients:
         run_pipeline_for_patient(pid)
 
-    # group aggregation after all patients
-    aggregate_group(args.patients)
+    if ("single_node_pairing_aggregation" in PIPELINE_SCRIPTS) and len(args.patients) > 1:
+        aggregate_group(args.patients)
 
 if __name__ == "__main__":
     main()

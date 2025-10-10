@@ -9,6 +9,34 @@ from cebra.models.jacobian_regularizer import JacobianReg
 from cebra.models.model import Model
 
 
+def make_and_save_split(T: int, out_dir: Path, train_frac: float = 0.8, seed: int = 0):
+    """
+    Generate a reproducible train/test split for length T and save into out_dir.
+    
+    Args:
+        T: total number of time steps
+        out_dir: directory to save train_idx.npy / test_idx.npy
+        train_frac: fraction of data for training
+        seed: RNG seed for reproducibility
+    Returns:
+        train_idx, test_idx (as numpy arrays)
+    """
+    rng = np.random.default_rng(seed)
+    idx = np.arange(T)
+    rng.shuffle(idx)
+
+    split = int(train_frac * T)
+    train_idx, test_idx = idx[:split], idx[split:]
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    np.save(out_dir / "train_idx.npy", train_idx)
+    np.save(out_dir / "test_idx.npy", test_idx)
+
+    print(f"[INFO] Saved train/test split to {out_dir} "
+          f"(train={len(train_idx)}, test={len(test_idx)}, total={T})")
+
+    return train_idx, test_idx
+
 # ---- DC5 constants ----
 def feat_indices_for_electrodes(elec_indices, n_electrodes=40, n_bands=5, n_lags=5):
     """Return DC5 column indices for given electrode indices across all lags & bands."""
@@ -54,7 +82,7 @@ def freeze_backbone_unfreeze_head(model):
             print(f"[UNFREEZE] {n}")
 
 
-class FeatureMaskWrapper(Model):
+class FeatureMaskWrapper(Model): #keep the same model structure but zero out unwanted features.
     """Apply a boolean mask to input features before passing through model."""
     def __init__(self, model, mask):
         super().__init__(num_input=model.num_input, num_output=model.num_output)
@@ -81,23 +109,25 @@ def train_and_save(model, loader, config, out_dir: Path,
                    device=None, num_steps=1000):
     """Generic training loop with saving of weights, embeddings, and metadata."""
     opt = torch.optim.Adam(
-        list(model.parameters()) + list(config.criterion.parameters()),
-        lr=3e-4, weight_decay=0.0
+        list(model.parameters()) + list(config.criterion.parameters()), 
+        #all weights of your encoder network
+        # parameters of the InfoNCE loss (how “strict” the contrastive similarity measure is)
+        lr=3e-4, weight_decay=0.0 #learning rate, L2 penalty on weights-regularization to prevent overfitting (disabled here)
     )
 
     solver = cebra.solver.init(
-        name="multiobjective-solver",
+        name="multiobjective-solver", #optimize multiple objectives at once(InfoNCE loss and regularization)
         model=model,
         feature_ranges=config.feature_ranges,
-        regularizer=JacobianReg(),
-        renormalize=True,
-        use_sam=False,
-        criterion=config.criterion,
+        regularizer=JacobianReg(),#smoothness penalty on embedding
+        renormalize=True,#L2-normalize embeddings after each step
+        use_sam=False, #Sharpness-Aware Minimization (SAM) optimizer (disabled here), standard gradient descent instead
+        criterion=config.criterion, #InfoNCE loss function, defines what “similar” vs “dissimilar” means
         optimizer=opt,
         tqdm_on=True
     ).to(device)
 
-    scheduler = LinearRampUp(
+    scheduler = LinearRampUp( #the model first learns alignment, then smooths the learned structure.
         n_splits=1,
         step_to_switch_on_reg=max(1, num_steps // 4),
         step_to_switch_off_reg=max(2, num_steps // 2),
