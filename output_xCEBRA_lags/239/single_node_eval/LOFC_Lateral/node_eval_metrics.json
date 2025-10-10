@@ -1,8 +1,0 @@
-{
-  "acc": 0.6878612716763006,
-  "R2_behavior": 0.08377772569656372,
-  "n_test": 173,
-  "embedding_len": 864,
-  "test_idx_len_used": 173,
-  "embedding_path": "output_xCEBRA_lags/239/single_node/LOFC_Lateral/embedding.pt"
-}
