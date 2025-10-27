@@ -9,14 +9,19 @@ import seaborn as sns
 
 # Default patients
 # Default patients
-PATIENT_IDS = [1, 2, 9, 27, 28, 15, 22, 24, 29, 30, 31] #2(239) not working well
+#PATIENT_IDS = [1, 2, 9, 27, 28, 15, 22, 24, 29, 30, 31] #2(239) not working well
+PATIENT_IDS = [1, 28] 
 #PATIENT_IDS = [29, 30, 31]
 
 PIPELINE_SCRIPTS = [
+    #"full_encoding",
+    "full_encoding_finetune",
+    "full_decoding_finetune",
+    
     #"single_node_encoding",
     #"single_node_decoding",
     #"single_node_pairing_encoding",
-    "single_node_pairing_decoding",
+    #"single_node_pairing_decoding",
     #"single_node_pairing_aggregation",
     #"OFC_training",
     #"evaluate_supervised"

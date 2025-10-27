@@ -5,6 +5,19 @@ from src.config import NEURAL_TENSOR_PATH
 import numpy as np
 from pathlib import Path
 
+
+def align_embedding_labels(Z, y_full):
+    T_emb = Z.shape[0]
+    T_full = len(y_full)
+    offset = T_full - T_emb                    # CHANGED: compute effective offset for alignment
+    assert offset >= 0, f"Embedding longer than labels: {T_emb} > {T_full}"
+    y_aligned = y_full[offset: offset + T_emb] # CHANGED: trim labels at the start to match embedding
+
+    # 80/20 split on the embedding timeline
+    split = int(0.8 * T_emb)
+    print(f"split at {split} / {T_emb} (offset={offset})")
+    return y_aligned, offset, split
+
 def load_fixed_cebra_model(model_path, name="offset10-model",
                            num_units=256, num_output=20, num_neurons=None):
     # Load weights first so we can infer when needed
@@ -100,3 +113,5 @@ def load_or_make_kernel(
     if p.exists():
         return np.load(p)
     return make_kernel_lag_major(n_electrodes, n_bands, n_lags, ell_lag, var_lag, save_path=p)
+
+

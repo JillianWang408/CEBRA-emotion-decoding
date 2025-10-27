@@ -1,0 +1,4 @@
+{
+  "phase": "unsupervised",
+  "latent_dim": 16
+}

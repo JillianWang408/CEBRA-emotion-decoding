@@ -7,7 +7,7 @@ from cebra.solver import MultiObjectiveConfig
 from cebra.solver.schedulers import LinearRampUp
 from cebra.models.jacobian_regularizer import JacobianReg
 from cebra.models.model import Model
-
+import matplotlib.pyplot as plt
 
 def make_and_save_split(T: int, out_dir: Path, train_frac: float = 0.8, seed: int = 0):
     """
@@ -58,17 +58,6 @@ def electrode_is_missing(neural_array, e_idx, n_electrodes=40, n_bands=5, n_lags
     return np.allclose(sub, 0.0)
 
 
-def build_cebra_config(loader, behavior_indices, temperature=1.0):
-    """Setup a standard MultiObjectiveConfig for CEBRA training."""
-    config = MultiObjectiveConfig(loader)
-    config.set_slice(*behavior_indices)
-    config.set_loss("FixedCosineInfoNCE", temperature=temperature)
-    config.set_distribution("time_delta", time_delta=1, label_name="position")
-    config.push()
-    config.finalize()
-    return config
-
-
 def freeze_backbone_unfreeze_head(model):
     """Freeze backbone layers, unfreeze projection head."""
     for p in model.parameters():
@@ -103,6 +92,30 @@ class FeatureMaskWrapper(Model): #keep the same model structure but zero out unw
     def split_outputs(self, value):
         self.model.split_outputs = value
 
+
+def build_cebra_config_unsupervised(loader, behavior_indices=None, temperature=1.0):
+    config = MultiObjectiveConfig(loader)
+    if behavior_indices is not None:
+        try:
+            config.set_slice(*behavior_indices)
+        except Exception as e:
+            print(f"[WARN] Ignoring behavior_indices={behavior_indices}: {e}")
+    config.set_loss("FixedCosineInfoNCE", temperature=temperature)
+    config.set_distribution("time", time_offset=1)
+    config.push(); config.finalize()
+    return config
+
+def build_cebra_config_supervised(loader, behavior_indices=None, temperature=1.0):
+    config = MultiObjectiveConfig(loader)
+    if behavior_indices is not None:
+        try:
+            config.set_slice(*behavior_indices)
+        except Exception as e:
+            print(f"[WARN] Ignoring behavior_indices={behavior_indices}: {e}")
+    config.set_loss("FixedCosineInfoNCE", temperature=temperature)
+    config.set_distribution("time_delta", time_delta=1, label_name="position")
+    config.push(); config.finalize()
+    return config
 
 def train_and_save(model, loader, config, out_dir: Path,
                    full_neural_tensor=None, meta: dict = None,
@@ -147,9 +160,22 @@ def train_and_save(model, loader, config, out_dir: Path,
         # Apply the same feature indices as during training
         if full_neural_tensor is not None and "feat_idx" in meta:
             feat_idx = torch.as_tensor(meta["feat_idx"], dtype=torch.long, device=device)
-            batch = full_neural_tensor[:, feat_idx].T.unsqueeze(0).to(device)
+            X = full_neural_tensor[:, feat_idx].T.unsqueeze(0).to(device)
+
         else:
-            batch = full_neural_tensor.T.unsqueeze(0).to(device)
+            X = full_neural_tensor.T.unsqueeze(0).to(device)
+
+        F = model.num_input
+        print("F", F)
+        if X.shape[0] != 1:
+            raise ValueError(f"Expected batch=1 for 3D input, got {tuple(X.shape)}")
+        if X.shape[1] == F:         # already (1,F,T)
+            batch = X.to(device)
+        elif X.shape[2] == F:       # (1,T,F) -> swap last two dims
+            batch = X.permute(0, 2, 1).contiguous().to(device)
+            print(batch.shape)
+        else:
+            raise ValueError(f"3D shape incompatible with channels {F}: {tuple(X.shape)}")
 
         emb = model(batch).detach().cpu()
         torch.save(emb, out_dir / "embedding.pt")
@@ -159,3 +185,25 @@ def train_and_save(model, loader, config, out_dir: Path,
         (out_dir / "meta.json").write_text(json.dumps(meta, indent=2))
 
     return solver
+
+#Embedding plotting (embedding ahve less tinesteps than original data due to conv/offset, need to align)
+
+def plot_embedding_split(Z, y_aligned, split, out_dir: Path, prefix: str, title_prefix: str):
+    """
+    Generate and save interactive Plotly embeddings for train/test splits.
+    """
+    # Interactive Plotly visualizations
+    fig_train = cebra.integrations.plotly.plot_embedding_interactive(
+        Z[:split], embedding_labels=y_aligned[:split],
+        title=f"{title_prefix} (train)", markersize=3, cmap="tab10"
+    )
+    fig_test = cebra.integrations.plotly.plot_embedding_interactive(
+        Z[split:], embedding_labels=y_aligned[split:],
+        title=f"{title_prefix} (test)", markersize=3, cmap="tab10"
+    )
+
+    # Save to HTML
+    fig_train.write_html(out_dir / f"{prefix}_train_interactive.html", include_plotlyjs="embed")
+    fig_test.write_html(out_dir / f"{prefix}_test_interactive.html", include_plotlyjs="embed")
+
+    print(f"[PLOT] Saved interactive embeddings: {prefix}_train/test_interactive.html")

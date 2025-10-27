@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from src.config import PATIENT_CONFIG, NODE_MAP
-from src.utils_eval import evaluate_node
+from src.utils_decoding import evaluate_node
 
 
 def run_single_node_eval(pid: int, base_dir: Path):

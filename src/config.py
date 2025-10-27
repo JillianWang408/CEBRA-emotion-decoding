@@ -85,8 +85,7 @@ EMBEDDING_PATH = MODEL_DIR / "embedding.pt"
 
 
 # Embedding dimensions
-BEHAVIOR_INDICES = (0, 10) 
-#Include all 10 offset heads in the InfoNCE loss, so the model learns consistent embeddings across all offsets.
+BEHAVIOR_INDICES = None
 N_LATENTS = 10
 
 # Output plots
