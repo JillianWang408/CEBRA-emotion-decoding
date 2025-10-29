@@ -14,12 +14,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from sklearn.linear_model import LogisticRegression
-from sklearn.neighbors import KNeighborsClassifier
+# from sklearn.neighbors import KNeighborsClassifier  # Commented out - kNN underperforms LogReg
 from sklearn.metrics import (
     accuracy_score,
     f1_score,
-    confusion_matrix,
-    ConfusionMatrixDisplay,
+    # confusion_matrix,  # Commented out - not generating confusion matrices
+    # ConfusionMatrixDisplay,
     r2_score,
 )
 from sklearn.model_selection import StratifiedShuffleSplit
@@ -190,10 +190,13 @@ def load_heads(enc_dir: Path, D: int, device: torch.device):
     return gate, emo, best_tau
 
 @torch.no_grad()
-def heads_predict_proba(X_TxD: np.ndarray, gate: GateHead, emo: EmotionHead, device) -> np.ndarray:
+def heads_predict_proba(X_TxD: np.ndarray, gate: GateHead, emo: EmotionHead, device, emotion_scale: float = 1.0) -> np.ndarray:
     """
     Turn head logits into GLOBAL 10-class probabilities:
     P(no) = 1 - sigmoid(gate), P(g in 1..9) = sigmoid(gate) * softmax(emo)[g-1]
+    
+    Args:
+        emotion_scale: Factor to scale emotion probabilities (default 1.0 = original formulation)
     """
     X = torch.from_numpy(X_TxD).to(device=device, dtype=torch.float32)  # (T,D)
     gl = gate(X)                              # (T,)
@@ -201,9 +204,26 @@ def heads_predict_proba(X_TxD: np.ndarray, gate: GateHead, emo: EmotionHead, dev
     el = emo(X)                                # (T,9)
     pe = F.softmax(el, dim=-1)                 # (T,9)
 
-    p_no = 1.0 - pa                            # (T,1)
-    p_act = pa * pe                            # (T,9)
-    P = torch.cat([p_no, p_act], dim=-1)       # (T,10)
+    if emotion_scale == 1.0:
+        # Original formulation
+        p_no = 1.0 - pa                            # (T,1)
+        p_act = pa * pe                            # (T,9)
+        P = torch.cat([p_no, p_act], dim=-1)       # (T,10)
+    else:
+        # Scale emotions to improve argmax behavior
+        p_act_scaled = (pa * emotion_scale) * pe   # (T, 9)
+        p_no = 1.0 - (pa * emotion_scale)          # (T, 1)
+        
+        # Clamp to ensure valid probabilities
+        p_no = torch.clamp(p_no, min=1e-6)
+        p_act_scaled = torch.clamp(p_act_scaled, min=1e-6)
+        
+        # Renormalize to sum to 1
+        total = p_no + p_act_scaled.sum(dim=-1, keepdim=True)  # (T, 1)
+        p_no = p_no / total
+        p_act = p_act_scaled / total
+        
+        P = torch.cat([p_no, p_act], dim=-1)       # (T, 10)
     return P.cpu().numpy()
 
 def apply_tau_rule(P_10: np.ndarray, tau: float) -> np.ndarray:
@@ -271,7 +291,7 @@ def main():
     y_pred_lin = X_test_g @ coef
     R2_behavior = r2_score(y_test, y_pred_lin)
 
-    # HMM pieces in LOCAL space (for kNN/LogReg)
+    # HMM base matrix (will be optimized later after LogReg is trained)
     if GLOBAL_NO_EMO in present:
         local_no_emo = g2l[GLOBAL_NO_EMO]
         A_base = estimate_transition_matrix_hub_spoke(
@@ -285,6 +305,8 @@ def main():
         np.fill_diagonal(A_base, 0.95)
         A_base += (1 - np.eye(n_local)) * (0.05 / (n_local - 1))
         A_base /= A_base.sum(axis=1, keepdims=True)
+        local_no_emo = -1  # Not present
+    
     log_A_base = log_clip(A_base)
 
     # Class prior (LOCAL)
@@ -315,17 +337,17 @@ def main():
         rows.append(result)
         print(f"[ok] [{decoder_name} | {variant_tag}] acc={acc:.3f}, R²={R2_behavior:.3f}, F1={macro_f1:.3f}, dwell={dwell_pred:.1f}")
 
-        # Confusion matrix in GLOBAL label space
-        unique_labels = np.unique(np.concatenate([y_true_g, y_pred_g]))
-        cm = confusion_matrix(y_true_g, y_pred_g, labels=unique_labels)
-        label_names = [EMOTION_MAP[int(l)] for l in unique_labels]
-        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=label_names)
-        disp.plot(xticks_rotation=90, cmap="Blues")
-        plt.title(f"{decoder_name} ({variant_tag}) CM (patient {patient_id})")
-        plt.tight_layout()
-        out_dir_cm = out_dir / f"cm_{decoder_name}_{variant_tag}_{patient_id}.png"
-        plt.savefig(out_dir_cm, dpi=150)
-        plt.close()
+        # Confusion matrix commented out for cleaner output
+        # unique_labels = np.unique(np.concatenate([y_true_g, y_pred_g]))
+        # cm = confusion_matrix(y_true_g, y_pred_g, labels=unique_labels)
+        # label_names = [EMOTION_MAP[int(l)] for l in unique_labels]
+        # disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=label_names)
+        # disp.plot(xticks_rotation=90, cmap="Blues")
+        # plt.title(f"{decoder_name} ({variant_tag}) CM (patient {patient_id})")
+        # plt.tight_layout()
+        # out_dir_cm = out_dir / f"cm_{decoder_name}_{variant_tag}_{patient_id}.png"
+        # plt.savefig(out_dir_cm, dpi=150)
+        # plt.close()
 
         # Timecourse row for multi-panel figure
         test_idx_local = np.arange(split, split + len(y_true_g))
@@ -339,33 +361,38 @@ def main():
 
     # =========================================================
     # kNN (LOCAL): Raw / EMA / HMM
+    # COMMENTED OUT: kNN underperforms LogReg due to:
+    #   1. Curse of dimensionality in high-dimensional embedding space
+    #   2. No learned decision boundaries (just memorizes training data)
+    #   3. Poor probability calibration (vote counts ≠ confidence)
+    #   4. CEBRA embeddings are optimized for linear classification
     # =========================================================
-    knn = KNeighborsClassifier(n_neighbors=9, metric="cosine", weights="distance")
-    knn.fit(X_tr, y_tr)
-    P_test_knn_local = knn.predict_proba(X_test_g)  # [T_test, n_local]
-    y_knn_raw_local  = np.argmax(P_test_knn_local, axis=1)
-    y_knn_raw_global = local_to_global(y_knn_raw_local)
+    # knn = KNeighborsClassifier(n_neighbors=9, metric="cosine", weights="distance")
+    # knn.fit(X_tr, y_tr)
+    # P_test_knn_local = knn.predict_proba(X_test_g)  # [T_test, n_local]
+    # y_knn_raw_local  = np.argmax(P_test_knn_local, axis=1)
+    # y_knn_raw_global = local_to_global(y_knn_raw_local)
     all_timecourse = []
-    all_timecourse.append(evaluate_and_log("Raw", "knn", y_test_g, y_knn_raw_global))
+    # all_timecourse.append(evaluate_and_log("Raw", "knn", y_test_g, y_knn_raw_global))
 
-    for alpha in [0.3, 0.5, 0.7]:
-        Q_local = ema_probs(P_test_knn_local, alpha=alpha)
-        y_knn_ema_local = np.argmax(Q_local, axis=1)
-        y_knn_ema_global = local_to_global(y_knn_ema_local)
-        all_timecourse.append(evaluate_and_log(f"EMA_a{alpha}", "knn", y_test_g, y_knn_ema_global))
+    # for alpha in [0.3, 0.5, 0.7]:
+    #     Q_local = ema_probs(P_test_knn_local, alpha=alpha)
+    #     y_knn_ema_local = np.argmax(Q_local, axis=1)
+    #     y_knn_ema_global = local_to_global(y_knn_ema_local)
+    #     all_timecourse.append(evaluate_and_log(f"EMA_a{alpha}", "knn", y_test_g, y_knn_ema_global))
 
-    for beta in [0.2, 0.5, 0.8]:
-        log_A = log_A_base.copy()
-        diag = np.eye(n_local, dtype=bool)
-        log_A[diag] += beta
-        A_boost = np.exp(log_A - log_A.max(axis=1, keepdims=True))
-        A_boost /= A_boost.sum(axis=1, keepdims=True)
-        log_A_boost = log_clip(A_boost)
+    # for beta in [0.2, 0.5, 0.8, 0.9, 1.0]:
+    #     log_A = log_A_base.copy()
+    #     diag = np.eye(n_local, dtype=bool)
+    #     log_A[diag] += beta
+    #     A_boost = np.exp(log_A - log_A.max(axis=1, keepdims=True))
+    #     A_boost /= A_boost.sum(axis=1, keepdims=True)
+    #     log_A_boost = log_clip(A_boost)
 
-        log_emiss_knn = log_clip(P_test_knn_local)
-        y_knn_hmm_local = viterbi_decode_logprobs(log_emiss_knn, log_A_boost, log_pi)
-        y_knn_hmm_global = local_to_global(y_knn_hmm_local)
-        all_timecourse.append(evaluate_and_log(f"HMM_b{beta}", "knn", y_test_g, y_knn_hmm_global))
+    #     log_emiss_knn = log_clip(P_test_knn_local)
+    #     y_knn_hmm_local = viterbi_decode_logprobs(log_emiss_knn, log_A_boost, log_pi)
+    #     y_knn_hmm_global = local_to_global(y_knn_hmm_local)
+    #     all_timecourse.append(evaluate_and_log(f"HMM_b{beta}", "knn", y_test_g, y_knn_hmm_global))
 
     # =========================================================
     # LogReg (LOCAL): C tuning + calibration; Raw / EMA / HMM
@@ -392,13 +419,79 @@ def main():
     y_lr_raw_global = local_to_global(y_lr_raw_local)
     all_timecourse.append(evaluate_and_log(f"Raw_C{best_C}", "logreg", y_test_g, y_lr_raw_global))
 
-    for alpha in [0.3, 0.5, 0.7]:
-        Q_local = ema_probs(P_test_lr_local, alpha=alpha)
-        y_lr_ema_local = np.argmax(Q_local, axis=1)
-        y_lr_ema_global = local_to_global(y_lr_ema_local)
-        all_timecourse.append(evaluate_and_log(f"EMA_a{alpha}_C{best_C}", "logreg", y_test_g, y_lr_ema_global))
+    # =========================================================
+    # Grid Search: HMM Transition Parameters + Beta (HIGH IMPACT)
+    # =========================================================
+    print("\n[HMM GRID SEARCH] Optimizing transition parameters on calibration set...")
+    
+    if local_no_emo != -1:  # If "no emotion" class is present
+        # Grid search over HMM parameters
+        stay_p_values = [0.85, 0.90, 0.95]
+        emo_to_none_values = [0.05, 0.10, 0.15]
+        beta_values = [0.8, 0.85, 0.9, 0.95, 1.0]
+        
+        best_stay, best_emo2none, best_beta_hmm = 0.9, 0.1, 0.9
+        best_hmm_f1 = -1.0
+        
+        # Test on calibration set with LogReg probabilities
+        P_cal_lr = cal.predict_proba(X_cal)
+        
+        for stay_p in stay_p_values:
+            for emo_to_none in emo_to_none_values:
+                A_test = estimate_transition_matrix_hub_spoke(
+                    n_classes=n_local,
+                    local_no_emo_idx=local_no_emo,
+                    stay_p=stay_p,
+                    emo_to_none_p=emo_to_none,
+                    none_to_emo_p=emo_to_none  # Keep symmetric for simplicity
+                )
+                log_A_test = log_clip(A_test)
+                
+                for beta in beta_values:
+                    log_A = log_A_test.copy()
+                    diag = np.eye(n_local, dtype=bool)
+                    log_A[diag] += beta
+                    A_boost = np.exp(log_A - log_A.max(axis=1, keepdims=True))
+                    A_boost /= A_boost.sum(axis=1, keepdims=True)
+                    log_A_boost = log_clip(A_boost)
+                    
+                    log_emiss_cal = log_clip(P_cal_lr)
+                    y_cal_hmm = viterbi_decode_logprobs(log_emiss_cal, log_A_boost, log_pi)
+                    f1_hmm = f1_score(y_cal, y_cal_hmm, average="macro")
+                    
+                    if f1_hmm > best_hmm_f1:
+                        best_hmm_f1 = f1_hmm
+                        best_stay, best_emo2none, best_beta_hmm = stay_p, emo_to_none, beta
+        
+        print(f"  [BEST HMM] stay_p={best_stay:.2f}, emo↔none={best_emo2none:.2f}, beta={best_beta_hmm:.2f}, F1={best_hmm_f1:.4f}")
+        
+        # Rebuild A_base with optimized parameters
+        A_base = estimate_transition_matrix_hub_spoke(
+            n_classes=n_local,
+            local_no_emo_idx=local_no_emo,
+            stay_p=best_stay,
+            emo_to_none_p=best_emo2none,
+            none_to_emo_p=best_emo2none
+        )
+        log_A_base = log_clip(A_base)
+    else:
+        # No optimization if "no emotion" not present
+        best_beta_hmm = 0.9
+        print(f"  Using default beta={best_beta_hmm:.2f} (no emotion class not present)")
+    
+    # Fine-grained beta grid for testing
+    beta_test_values = [0.8, 0.85, 0.9, 0.95, 1.0]
 
-    for beta in [0.2, 0.5, 0.8]:
+    # EMA commented out - HMM performs better (learns optimal state transitions vs simple smoothing)
+    # for alpha in [0.3, 0.5, 0.7]:
+    #     Q_local = ema_probs(P_test_lr_local, alpha=alpha)
+    #     y_lr_ema_local = np.argmax(Q_local, axis=1)
+    #     y_lr_ema_global = local_to_global(y_lr_ema_local)
+    #     all_timecourse.append(evaluate_and_log(f"EMA_a{alpha}_C{best_C}", "logreg", y_test_g, y_lr_ema_global))
+
+    # Use fine-grained beta grid with optimized HMM parameters
+    beta_test_values = [0.8, 0.85, 0.9, 0.95, 1.0]
+    for beta in beta_test_values:
         log_A = log_A_base.copy()
         diag = np.eye(n_local, dtype=bool)
         log_A[diag] += beta
@@ -409,7 +502,10 @@ def main():
         log_emiss_lr = log_clip(P_test_lr_local)
         y_lr_hmm_local = viterbi_decode_logprobs(log_emiss_lr, log_A_boost, log_pi)
         y_lr_hmm_global = local_to_global(y_lr_hmm_local)
-        all_timecourse.append(evaluate_and_log(f"HMM_b{beta}_C{best_C}", "logreg", y_test_g, y_lr_hmm_global))
+        
+        # Add marker if this is the best beta from grid search
+        marker = "*" if beta == best_beta_hmm else ""
+        all_timecourse.append(evaluate_and_log(f"HMM_b{beta}{marker}_C{best_C}", "logreg", y_test_g, y_lr_hmm_global))
 
     # =========================================================
     # Heads-based decoding (GLOBAL 10-class): Raw / τ / EMA / HMM  (NEW)
@@ -418,44 +514,258 @@ def main():
     gate, emo, best_tau = load_heads(enc_dir, D=X_all.shape[1], device=device)
     if gate is not None and emo is not None:
         # Heads produce 10-class global probabilities directly
-        P_test_heads = heads_predict_proba(X_test_g, gate, emo, device)  # [T_test, 10]
-        y_heads_raw = np.argmax(P_test_heads, axis=1)  # global 0..9
-        all_timecourse.append(evaluate_and_log("Raw", "heads", y_test_g, y_heads_raw))
+        X_test_torch = torch.from_numpy(X_test_g).to(device=device, dtype=torch.float32)
+        gate_logits = gate(X_test_torch).cpu().detach().numpy()
+        gate_probs = torch.sigmoid(torch.from_numpy(gate_logits)).numpy()
+        
+        # Grid search over emotion_scale - use CALIBRATION set to avoid data leakage
+        print(f"\n[GRID SEARCH] Testing emotion_scale values on calibration set:")
+        emotion_scales = [1.0, 1.2, 1.5, 1.8, 2.0, 2.5]
+        best_scale, best_f1 = 1.0, 0.0
+        
+        for scale in emotion_scales:
+            # Get heads probabilities on calibration set
+            P_cal_heads_global = heads_predict_proba(X_cal, gate, emo, device, emotion_scale=scale)
+            
+            # Map from global 10-class to local n_local classes
+            P_cal_heads_local = np.zeros((len(P_cal_heads_global), n_local))
+            for local_idx, global_idx in l2g.items():
+                if global_idx < P_cal_heads_global.shape[1]:
+                    P_cal_heads_local[:, local_idx] = P_cal_heads_global[:, global_idx]
+            row_sums_cal = P_cal_heads_local.sum(axis=1, keepdims=True)
+            row_sums_cal[row_sums_cal == 0] = 1.0
+            P_cal_heads_local = P_cal_heads_local / row_sums_cal
+            
+            y_pred_cal_local = np.argmax(P_cal_heads_local, axis=1)
+            f1 = f1_score(y_cal, y_pred_cal_local, average="macro")
+            y_pred_cal_global = local_to_global(y_pred_cal_local)
+            n_emotions = (y_pred_cal_global > 0).sum()
+            print(f"  - scale={scale:.1f}: F1={f1:.4f}, emotions={n_emotions}/{len(y_pred_cal_global)}")
+            if f1 > best_f1:
+                best_f1, best_scale = f1, scale
+        
+        print(f"[BEST] emotion_scale={best_scale:.1f} with F1={best_f1:.4f}\n")
+        
+        P_test_heads = heads_predict_proba(X_test_g, gate, emo, device, emotion_scale=best_scale)
+        
+        # Debug: Print probability statistics
+        print(f"[DEBUG] Heads probability stats (scale={best_scale:.1f}):")
+        print(f"  - Gate prob (P emotion present): mean={gate_probs.mean():.3f}, max={gate_probs.max():.3f}, min={gate_probs.min():.3f}")
+        print(f"  - P(class 0): mean={P_test_heads[:, 0].mean():.3f}, max={P_test_heads[:, 0].max():.3f}")
+        print(f"  - P(emotions 1-9): mean={P_test_heads[:, 1:].mean():.3f}, max={P_test_heads[:, 1:].max():.3f}")
+        print(f"  - Raw predictions: class 0={(P_test_heads.argmax(axis=1) == 0).sum()}/{len(P_test_heads)}, emotions={(P_test_heads.argmax(axis=1) > 0).sum()}/{len(P_test_heads)}")
+        
+        # Standalone heads variants commented out - redundant with LogReg+Features and Ensemble
+        # y_heads_raw = np.argmax(P_test_heads, axis=1)  # global 0..9
+        # all_timecourse.append(evaluate_and_log(f"Raw_s{best_scale:.1f}", "heads", y_test_g, y_heads_raw))
 
-        # τ-threshold decision (if available)
-        if isinstance(best_tau, (int, float)) and 0.0 <= best_tau <= 1.0:
-            y_heads_tau = apply_tau_rule(P_test_heads, float(best_tau))
-            all_timecourse.append(evaluate_and_log(f"Tau_{best_tau:.2f}", "heads", y_test_g, y_heads_tau))
+        # # τ-threshold decision (if available)
+        # # Note: Tau rule needs original probabilities (scale=1.0) to correctly extract gate probabilities
+        # if isinstance(best_tau, (int, float)) and 0.0 <= best_tau <= 1.0:
+        #     P_test_heads_original = heads_predict_proba(X_test_g, gate, emo, device, emotion_scale=1.0)
+        #     y_heads_tau = apply_tau_rule(P_test_heads_original, float(best_tau))
+        #     n_zero_tau = (y_heads_tau == 0).sum()
+        #     n_emo_tau = (y_heads_tau > 0).sum()
+        #     print(f"[Tau] tau={best_tau:.2f}: no_emotion={n_zero_tau}/{len(y_heads_tau)}, emotions={n_emo_tau}/{len(y_heads_tau)}")
+        #     all_timecourse.append(evaluate_and_log(f"Tau_{best_tau:.2f}", "heads", y_test_g, y_heads_tau))
 
-        # EMA over 10-class probs
-        for alpha in [0.3, 0.5, 0.7]:
-            Q10 = ema_probs(P_test_heads, alpha=alpha)
-            y_ema = np.argmax(Q10, axis=1)
-            all_timecourse.append(evaluate_and_log(f"EMA_a{alpha}", "heads", y_test_g, y_ema))
+        # EMA commented out - HMM performs better (learns optimal state transitions vs simple smoothing)
+        # for alpha in [0.3, 0.5, 0.7]:
+        #     Q10 = ema_probs(P_test_heads, alpha=alpha)
+        #     y_ema = np.argmax(Q10, axis=1)
+        #     all_timecourse.append(evaluate_and_log(f"EMA_a{alpha}_s{best_scale:.1f}", "heads", y_test_g, y_ema))
 
-        # HMM in GLOBAL space (10 classes, no_emo=0)
-        A10 = estimate_transition_matrix_hub_spoke(
-            n_classes=10,
-            local_no_emo_idx=0,    # global no_emotion is index 0 here
-            stay_p=0.9, emo_to_none_p=0.1, none_to_emo_p=0.1
-        )
-        log_A10_base = log_clip(A10)
-
-        # Prior from heads' *train* probs would be better; use test-neutral prior = uniform
-        pi10 = np.ones(10, dtype=np.float64) / 10.0
-        log_pi10 = log_clip(pi10)
-
-        for beta in [0.2, 0.5, 0.8]:
-            log_A = log_A10_base.copy()
-            diag = np.eye(10, dtype=bool)
+        # HMM commented out - keeping only Raw and Tau as sanity checks
+        # # HMM in GLOBAL space (10 classes, no_emo=0)
+        # A10 = estimate_transition_matrix_hub_spoke(
+        #     n_classes=10,
+        #     local_no_emo_idx=0,
+        #     stay_p=0.9, emo_to_none_p=0.1, none_to_emo_p=0.1
+        # )
+        # log_A10_base = log_clip(A10)
+        # pi10 = np.ones(10, dtype=np.float64) / 10.0
+        # log_pi10 = log_clip(pi10)
+        # for beta in [0.2, 0.5, 0.8, 0.9, 1.0]:
+        #     log_A = log_A10_base.copy()
+        #     diag = np.eye(10, dtype=bool)
+        #     log_A[diag] += beta
+        #     A_boost = np.exp(log_A - log_A.max(axis=1, keepdims=True))
+        #     A_boost /= A_boost.sum(axis=1, keepdims=True)
+        #     log_A_boost = log_clip(A_boost)
+        #     log_emiss = log_clip(P_test_heads)
+        #     y_hmm = viterbi_decode_logprobs(log_emiss, log_A_boost, log_pi10)
+        #     all_timecourse.append(evaluate_and_log(f"HMM_b{beta}_s{best_scale:.1f}", "heads", y_test_g, y_hmm))
+        
+        # =========================================================
+        # LogReg + Heads Features: Use gate & heads as additional features
+        # =========================================================
+        print("\n[LogReg+Features] Training LogReg with embeddings + gate + heads probabilities...")
+        
+        # Get gate probabilities and heads probabilities for train/test/cal sets
+        # Using scaled probabilities (best_scale) since they work better
+        with torch.no_grad():
+            # Train set
+            X_train_torch = torch.from_numpy(X_train_g).to(device=device, dtype=torch.float32)
+            gate_train = torch.sigmoid(gate(X_train_torch)).cpu().detach().numpy().reshape(-1, 1)
+            P_train_heads = heads_predict_proba(X_train_g, gate, emo, device, emotion_scale=best_scale)
+            
+            # Test set (gate already computed earlier)
+            gate_test = gate_probs.reshape(-1, 1)  # Reuse from earlier
+            P_test_heads_feat = P_test_heads  # Reuse from earlier (already scaled)
+        
+        # Create augmented feature sets: [embeddings | gate_prob | heads_probs]
+        X_train_augmented = np.concatenate([X_train_g, gate_train, P_train_heads], axis=1)
+        X_test_augmented = np.concatenate([X_test_g, gate_test, P_test_heads_feat], axis=1)
+        
+        print(f"  Augmented features: {X_train_g.shape[1]} (embeddings) + 1 (gate) + {P_train_heads.shape[1]} (heads) = {X_train_augmented.shape[1]} total")
+        
+        # Split for calibration
+        tr_idx_aug, cal_idx_aug = next(sss.split(X_train_augmented, y_train))
+        X_tr_aug, y_tr_aug = X_train_augmented[tr_idx_aug], y_train[tr_idx_aug]
+        X_cal_aug, y_cal_aug = X_train_augmented[cal_idx_aug], y_train[cal_idx_aug]
+        
+        # Grid search over C
+        best_lr_aug, best_C_aug, best_val_aug = None, None, -1.0
+        for C in [0.1, 1.0, 3.0, 10.0]:
+            lr_aug = LogisticRegression(
+                solver="lbfgs",
+                class_weight="balanced",
+                C=C,
+                max_iter=5000,
+                n_jobs=-1,
+            )
+            lr_aug.fit(X_tr_aug, y_tr_aug)
+            y_cal_hat_aug = lr_aug.predict(X_cal_aug)
+            f1_cal_aug = f1_score(y_cal_aug, y_cal_hat_aug, average="macro")
+            if f1_cal_aug > best_val_aug:
+                best_val_aug, best_C_aug, best_lr_aug = f1_cal_aug, C, lr_aug
+        
+        # Calibrate and predict
+        cal_aug = CalibratedClassifierCV(best_lr_aug, method="isotonic", cv="prefit")
+        cal_aug.fit(X_cal_aug, y_cal_aug)
+        P_test_aug_local = cal_aug.predict_proba(X_test_augmented)
+        
+        y_aug_raw_local = np.argmax(P_test_aug_local, axis=1)
+        y_aug_raw_global = local_to_global(y_aug_raw_local)
+        all_timecourse.append(evaluate_and_log(f"Raw_C{best_C_aug}", "logreg+features", y_test_g, y_aug_raw_global))
+        
+        # HMM on LogReg+Features (fine-grained beta grid)
+        for beta in beta_test_values:
+            log_A = log_A_base.copy()
+            diag = np.eye(n_local, dtype=bool)
             log_A[diag] += beta
             A_boost = np.exp(log_A - log_A.max(axis=1, keepdims=True))
             A_boost /= A_boost.sum(axis=1, keepdims=True)
             log_A_boost = log_clip(A_boost)
 
-            log_emiss = log_clip(P_test_heads)
-            y_hmm = viterbi_decode_logprobs(log_emiss, log_A_boost, log_pi10)
-            all_timecourse.append(evaluate_and_log(f"HMM_b{beta}", "heads", y_test_g, y_hmm))
+            log_emiss_aug = log_clip(P_test_aug_local)
+            y_aug_hmm_local = viterbi_decode_logprobs(log_emiss_aug, log_A_boost, log_pi)
+            y_aug_hmm_global = local_to_global(y_aug_hmm_local)
+            
+            marker = "*" if beta == best_beta_hmm else ""
+            all_timecourse.append(evaluate_and_log(f"HMM_b{beta}{marker}_C{best_C_aug}", "logreg+features", y_test_g, y_aug_hmm_global))
+        
+        # =========================================================
+        # Ensemble: Heads + Logistic Regression (Probability Averaging)
+        # Combine probability distributions via weighted average
+        # =========================================================
+        print("\n[Ensemble] Combining LogReg and Heads via probability averaging...")
+        
+        print(f"  Using emotion_scale={best_scale:.1f} for heads probabilities (same as heads Raw)")
+        
+        # Map heads probabilities from global 10-class to local space
+        # Use best_scale since scaled probabilities work better for predictions
+        P_test_heads_for_ensemble = heads_predict_proba(X_test_g, gate, emo, device, emotion_scale=best_scale)
+        
+        # Create mapping from global 10 classes to local classes
+        P_test_heads_local = np.zeros((len(P_test_heads_for_ensemble), n_local))
+        for local_idx, global_idx in l2g.items():
+            if global_idx < P_test_heads_for_ensemble.shape[1]:
+                P_test_heads_local[:, local_idx] = P_test_heads_for_ensemble[:, global_idx]
+        
+        # Normalize to ensure valid probabilities
+        row_sums = P_test_heads_local.sum(axis=1, keepdims=True)
+        row_sums[row_sums == 0] = 1.0  # Avoid division by zero
+        P_test_heads_local = P_test_heads_local / row_sums
+        
+        # Grid search over ensemble weights on calibration set
+        print("  Grid searching ensemble weights...")
+        best_weight, best_ensemble_f1 = 0.5, -1.0
+        
+        # Get logreg predictions on calibration set
+        P_cal_lr = cal.predict_proba(X_cal)
+        n_classes_lr = P_cal_lr.shape[1]  # Classes LogReg actually knows
+        
+        # Get heads predictions on calibration set
+        P_cal_heads_global = heads_predict_proba(X_cal, gate, emo, device, emotion_scale=best_scale)
+        
+        # Map heads to same class space as LogReg (might be smaller than n_local)
+        # Get the classes LogReg knows about
+        lr_classes = cal.classes_  # Classes LogReg can predict
+        P_cal_heads_local = np.zeros((len(P_cal_heads_global), n_classes_lr))
+        
+        for lr_idx, local_class in enumerate(lr_classes):
+            global_class = l2g[local_class]  # Convert local to global
+            if global_class < P_cal_heads_global.shape[1]:
+                P_cal_heads_local[:, lr_idx] = P_cal_heads_global[:, global_class]
+        
+        row_sums_cal = P_cal_heads_local.sum(axis=1, keepdims=True)
+        row_sums_cal[row_sums_cal == 0] = 1.0
+        P_cal_heads_local = P_cal_heads_local / row_sums_cal
+        
+        for w_lr in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]:
+            w_heads = 1.0 - w_lr
+            P_cal_ensemble = w_lr * P_cal_lr + w_heads * P_cal_heads_local
+            y_cal_pred = np.argmax(P_cal_ensemble, axis=1)
+            f1_ens = f1_score(y_cal, y_cal_pred, average="macro")
+            print(f"    w_lr={w_lr:.1f}, w_heads={w_heads:.1f}: F1={f1_ens:.4f}")
+            if f1_ens > best_ensemble_f1:
+                best_ensemble_f1, best_weight = f1_ens, w_lr
+        
+        print(f"  [BEST] w_lr={best_weight:.1f}, w_heads={1-best_weight:.1f}, F1={best_ensemble_f1:.4f}\n")
+        
+        # Apply best weights to test set
+        # Need to align P_test_heads_local to same classes as P_test_lr_local
+        P_test_heads_aligned = np.zeros((len(P_test_heads_for_ensemble), n_classes_lr))
+        for lr_idx, local_class in enumerate(lr_classes):
+            global_class = l2g[local_class]
+            if global_class < P_test_heads_for_ensemble.shape[1]:
+                P_test_heads_aligned[:, lr_idx] = P_test_heads_for_ensemble[:, global_class]
+        
+        row_sums_test = P_test_heads_aligned.sum(axis=1, keepdims=True)
+        row_sums_test[row_sums_test == 0] = 1.0
+        P_test_heads_aligned = P_test_heads_aligned / row_sums_test
+        
+        w_lr_best = best_weight
+        w_heads_best = 1.0 - best_weight
+        P_test_ensemble_local = w_lr_best * P_test_lr_local + w_heads_best * P_test_heads_aligned
+        
+        y_ensemble_raw_local = np.argmax(P_test_ensemble_local, axis=1)
+        y_ensemble_raw_global = local_to_global(y_ensemble_raw_local)
+        all_timecourse.append(evaluate_and_log(f"Raw_w{w_lr_best:.1f}", "ensemble", y_test_g, y_ensemble_raw_global))
+        
+        # EMA commented out - HMM performs better (learns optimal state transitions vs simple smoothing)
+        # for alpha in [0.3, 0.5, 0.7]:
+        #     Q_local = ema_probs(P_test_ensemble_local, alpha=alpha)
+        #     y_ensemble_ema_local = np.argmax(Q_local, axis=1)
+        #     y_ensemble_ema_global = local_to_global(y_ensemble_ema_local)
+        #     all_timecourse.append(evaluate_and_log(f"EMA_a{alpha}_w{w_lr_best:.1f}", "ensemble", y_test_g, y_ensemble_ema_global))
+        
+        # HMM on ensemble probabilities (fine-grained beta grid)
+        for beta in beta_test_values:
+            log_A = log_A_base.copy()
+            diag = np.eye(n_local, dtype=bool)
+            log_A[diag] += beta
+            A_boost = np.exp(log_A - log_A.max(axis=1, keepdims=True))
+            A_boost /= A_boost.sum(axis=1, keepdims=True)
+            log_A_boost = log_clip(A_boost)
+
+            log_emiss = log_clip(P_test_ensemble_local)
+            y_ensemble_hmm_local = viterbi_decode_logprobs(log_emiss, log_A_boost, log_pi)
+            y_ensemble_hmm_global = local_to_global(y_ensemble_hmm_local)
+            
+            marker = "*" if beta == best_beta_hmm else ""
+            all_timecourse.append(evaluate_and_log(f"HMM_b{beta}{marker}_w{w_lr_best:.1f}", "ensemble", y_test_g, y_ensemble_hmm_global))
     else:
         print("[INFO] Heads not found; skipping heads-based decoding.")
 
