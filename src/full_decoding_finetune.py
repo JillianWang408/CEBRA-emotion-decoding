@@ -26,8 +26,9 @@ from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.calibration import CalibratedClassifierCV
 
 import matplotlib.pyplot as plt
+import seaborn as sns
 
-from src.config import FULL_EMOTION_PATH, MODEL_DIR, PATIENT_CONFIG, EMOTION_MAP
+from src.config import FULL_EMOTION_PATH, MODEL_DIR, PATIENT_CONFIG, EMOTION_MAP, PROJECT_ROOT
 from src.utils_decoding import load_embedding_TxD, _split_train_test
 from src.utils_visualization import (
     collect_decoding_timecourse,
@@ -57,12 +58,29 @@ DECODERS = ["knn", "logreg", "heads"]  # <-- NEW family added
 GLOBAL_NO_EMO = 0  # EMOTION_MAP[0] == "No emotion"
 ALL_ACTIVE_GLOBALS = list(range(1, 10))  # 1..9 are emotions
 
+# Expanded hyperparameter grids (covariance data spans wider ranges)
+LOGREG_C_GRID = [0.01, 0.05, 0.1, 0.5, 1.0, 3.0, 5.0, 10.0, 20.0]
+HMM_STAY_GRID = [0.75, 0.80, 0.85, 0.90, 0.95]
+HMM_EMO_TO_NONE_GRID = [0.02, 0.05, 0.10, 0.15, 0.20]
+HMM_BETA_GRID = [0.4, 0.6, 0.8, 0.85, 0.9, 0.95, 1.0, 1.1]
+HMM_BETA_TEST_GRID = [0.4, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 1.0, 1.1]
+HEADS_EMOTION_SCALE_GRID = [0.5, 0.8, 1.0, 1.2, 1.5, 1.8, 2.0, 2.5, 3.0]
+MODEL_COMPARISON_DECODERS = ["logreg", "logreg+features", "ensemble"]
+
 # ---------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------
 def l2_normalize_rows(X: np.ndarray, eps: float = 1e-8) -> np.ndarray:
     nrm = np.linalg.norm(X, axis=1, keepdims=True)
     return X / (nrm + eps)
+
+def infer_dataset_tag(model_dir: Path) -> str:
+    lower = str(model_dir).lower()
+    if "cov" in lower:
+        return "covariance"
+    if "lag" in lower:
+        return "lags"
+    return "unknown"
 
 def compute_dwell_times(labels: np.ndarray) -> np.ndarray:
     if labels.size == 0:
@@ -329,10 +347,10 @@ def main():
             "patient": patient_id,
             "decoder": decoder_name,
             "variant": variant_tag,
-            "R2_behavior": f"{R2_behavior:.4f}",
-            "accuracy": f"{acc:.4f}",
-            "macroF1": f"{macro_f1:.4f}",
-            "mean_dwell_pred": f"{dwell_pred:.2f}",
+            "R2_behavior": round(R2_behavior, 4),
+            "accuracy": round(acc, 4),
+            "macroF1": round(macro_f1, 4),
+            "mean_dwell_pred": round(dwell_pred, 2),
         }
         rows.append(result)
         print(f"[ok] [{decoder_name} | {variant_tag}] acc={acc:.3f}, R²={R2_behavior:.3f}, F1={macro_f1:.3f}, dwell={dwell_pred:.1f}")
@@ -397,8 +415,9 @@ def main():
     # =========================================================
     # LogReg (LOCAL): C tuning + calibration; Raw / EMA / HMM
     # =========================================================
+    print(f"[LogReg] Searching C over {LOGREG_C_GRID}")
     best_lr, best_C, best_val = None, None, -1.0
-    for C in [0.1, 1.0, 3.0, 10.0]:
+    for C in LOGREG_C_GRID:
         lr = LogisticRegression(
             solver="lbfgs",
             class_weight="balanced",
@@ -426,10 +445,13 @@ def main():
     
     if local_no_emo != -1:  # If "no emotion" class is present
         # Grid search over HMM parameters
-        stay_p_values = [0.85, 0.90, 0.95]
-        emo_to_none_values = [0.05, 0.10, 0.15]
-        beta_values = [0.8, 0.85, 0.9, 0.95, 1.0]
-        
+        stay_p_values = HMM_STAY_GRID
+        emo_to_none_values = HMM_EMO_TO_NONE_GRID
+        beta_values = HMM_BETA_GRID
+        print(f"  stay_p grid: {stay_p_values}")
+        print(f"  emo↔none grid: {emo_to_none_values}")
+        print(f"  beta grid: {beta_values}")
+
         best_stay, best_emo2none, best_beta_hmm = 0.9, 0.1, 0.9
         best_hmm_f1 = -1.0
         
@@ -480,7 +502,7 @@ def main():
         print(f"  Using default beta={best_beta_hmm:.2f} (no emotion class not present)")
     
     # Fine-grained beta grid for testing
-    beta_test_values = [0.8, 0.85, 0.9, 0.95, 1.0]
+    beta_test_values = HMM_BETA_TEST_GRID
 
     # EMA commented out - HMM performs better (learns optimal state transitions vs simple smoothing)
     # for alpha in [0.3, 0.5, 0.7]:
@@ -490,7 +512,6 @@ def main():
     #     all_timecourse.append(evaluate_and_log(f"EMA_a{alpha}_C{best_C}", "logreg", y_test_g, y_lr_ema_global))
 
     # Use fine-grained beta grid with optimized HMM parameters
-    beta_test_values = [0.8, 0.85, 0.9, 0.95, 1.0]
     for beta in beta_test_values:
         log_A = log_A_base.copy()
         diag = np.eye(n_local, dtype=bool)
@@ -519,8 +540,8 @@ def main():
         gate_probs = torch.sigmoid(torch.from_numpy(gate_logits)).numpy()
         
         # Grid search over emotion_scale - use CALIBRATION set to avoid data leakage
-        print(f"\n[GRID SEARCH] Testing emotion_scale values on calibration set:")
-        emotion_scales = [1.0, 1.2, 1.5, 1.8, 2.0, 2.5]
+        emotion_scales = HEADS_EMOTION_SCALE_GRID
+        print(f"\n[GRID SEARCH] Testing emotion_scale values on calibration set (grid={emotion_scales}):")
         best_scale, best_f1 = 1.0, 0.0
         
         for scale in emotion_scales:
@@ -626,7 +647,8 @@ def main():
         
         # Grid search over C
         best_lr_aug, best_C_aug, best_val_aug = None, None, -1.0
-        for C in [0.1, 1.0, 3.0, 10.0]:
+        print(f"[LogReg+Features] Searching C over {LOGREG_C_GRID}")
+        for C in LOGREG_C_GRID:
             lr_aug = LogisticRegression(
                 solver="lbfgs",
                 class_weight="balanced",
@@ -776,6 +798,86 @@ def main():
     summary_path = out_dir / "decoding_summary.csv"
     df_summary.to_csv(summary_path, index=False)
     print(f"[done] wrote decoding summary → {summary_path}")
+
+    # Save best-per-model metrics for cross-patient comparison
+    dataset_tag = infer_dataset_tag(MODEL_DIR)
+    comparison_records = []
+    for decoder_name in MODEL_COMPARISON_DECODERS:
+        if "decoder" not in df_summary.columns:
+            break
+        df_dec = df_summary[df_summary["decoder"] == decoder_name]
+        if df_dec.empty:
+            continue
+        best_idx = df_dec["macroF1"].astype(float).idxmax()
+        best_row = df_summary.loc[best_idx]
+        comparison_records.append({
+            "dataset": dataset_tag,
+            "patient": best_row["patient"],
+            "decoder": decoder_name,
+            "variant": best_row["variant"],
+            "accuracy": float(best_row["accuracy"]),
+            "macroF1": float(best_row["macroF1"]),
+            "mean_dwell_pred": float(best_row["mean_dwell_pred"]),
+        })
+
+    if comparison_records:
+        comparison_dir = PROJECT_ROOT / "model_comparison"
+        comparison_dir.mkdir(parents=True, exist_ok=True)
+        comparison_file = comparison_dir / "model_performance.csv"
+        comparison_df_new = pd.DataFrame(comparison_records)
+        if comparison_file.exists():
+            existing_df = pd.read_csv(comparison_file)
+            comparison_df = pd.concat([existing_df, comparison_df_new], ignore_index=True)
+            comparison_df = comparison_df.drop_duplicates(
+                subset=["dataset", "patient", "decoder"], keep="last"
+            )
+        else:
+            comparison_df = comparison_df_new
+
+        comparison_df.to_csv(comparison_file, index=False)
+        print(f"[done] updated model comparison metrics → {comparison_file}")
+
+        # Plot summary across patients for each model/dataset combo
+        try:
+            comparison_df_plot = comparison_df.copy()
+            unique_patients = sorted(comparison_df_plot["patient"].astype(str).unique())
+            patient_to_numeric = {p: idx for idx, p in enumerate(unique_patients)}
+            comparison_df_plot["patient_numeric"] = comparison_df_plot["patient"].map(patient_to_numeric)
+            comparison_df_plot = comparison_df_plot.sort_values(
+                by=["dataset", "decoder", "patient_numeric"]
+            )
+            comparison_df_plot["model_dataset"] = (
+                comparison_df_plot["decoder"] + " (" + comparison_df_plot["dataset"] + ")"
+            )
+
+            plt.figure(figsize=(12, 6))
+            ax = plt.gca()
+            sns.lineplot(
+                data=comparison_df_plot,
+                x="patient_numeric",
+                y="macroF1",
+                hue="decoder",
+                style="dataset",
+                markers=True,
+                dashes={"covariance": (5, 2), "lags": ""},
+                ax=ax,
+            )
+            ax.set_xlabel("Patient ID")
+            xticks = sorted(comparison_df_plot["patient_numeric"].unique())
+            ax.set_xticks(xticks)
+            inv_map = {v: k for k, v in patient_to_numeric.items()}
+            ax.set_xticklabels([inv_map[x] for x in xticks])
+            ax.set_ylabel("Macro-F1")
+            ax.set_title("Decoder Macro-F1 Across Patients (Best Variant per Model/Dataset)")
+            ax.legend(title="Model/Dataset", bbox_to_anchor=(1, 1), loc="upper left")
+            plt.tight_layout()
+
+            plot_path = comparison_dir / "model_performance.png"
+            plt.savefig(plot_path, dpi=160)
+            plt.close()
+            print(f"[plot] saved model comparison plot → {plot_path}")
+        except Exception as exc:
+            print(f"[warn] failed to generate model comparison plot: {exc}")
 
     # Timecourse visualization
     df_all = save_decoding_timecourse(all_timecourse, out_dir / "decoding_timecourse.csv")
