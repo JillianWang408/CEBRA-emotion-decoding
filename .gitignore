@@ -17,3 +17,8 @@ data/
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Excluded source directories
+src/covariance_data_analysis/
+src/gdec_training/
+src/xCEBRA_past_script/
