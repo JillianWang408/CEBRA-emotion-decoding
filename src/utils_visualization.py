@@ -71,8 +71,8 @@ def plot_decoding_timecourses(
 
     n_pairs = len(pairs)
     n_rows = int(np.ceil(n_pairs / n_cols))
-    fig_height = 2.8 * n_rows
-    fig_width = 4.8 * n_cols
+    fig_height = 3.2 * n_rows
+    fig_width = 20 * n_cols
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(fig_width, fig_height))
     axes = np.array(axes).reshape(-1)
 

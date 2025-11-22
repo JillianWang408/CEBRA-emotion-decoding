@@ -1,0 +1,7 @@
+patient,decoder,variant,R2_behavior,accuracy,macroF1,mean_dwell_pred
+239,logreg,Raw_C0.01,-0.536,0.1755,0.059,3.3
+239,logreg,HMM_b0.40_C0.01,-0.536,0.1514,0.0583,5.4
+239,logreg+features,Raw_C0.01,-0.536,0.1739,0.0583,3.43
+239,logreg+features,HMM_b0.40_C0.01,-0.536,0.161,0.0614,5.59
+239,ensemble,Raw_w0.8,-0.536,0.1739,0.0586,3.27
+239,ensemble,HMM_b0.40_w0.8,-0.536,0.1417,0.0572,5.91

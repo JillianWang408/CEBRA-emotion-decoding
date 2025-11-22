@@ -7,15 +7,21 @@ from pathlib import Path
 
 
 def align_embedding_labels(Z, y_full):
+    """Align embedding with labels, handling temporal offset.
+    
+    With valid padding (padding=0), PyTorch Conv1d output aligns with START of input.
+    So we trim labels from the END (use first T_emb labels).
+    """
     T_emb = Z.shape[0]
     T_full = len(y_full)
-    offset = T_full - T_emb                    # CHANGED: compute effective offset for alignment
+    offset = T_full - T_emb
     assert offset >= 0, f"Embedding longer than labels: {T_emb} > {T_full}"
-    y_aligned = y_full[offset: offset + T_emb] # CHANGED: trim labels at the start to match embedding
+    # Trim from END: use first T_emb labels (last 'offset' labels are lost)
+    y_aligned = y_full[:T_emb]
 
     # 80/20 split on the embedding timeline
     split = int(0.8 * T_emb)
-    print(f"split at {split} / {T_emb} (offset={offset})")
+    print(f"split at {split} / {T_emb} (offset={offset}, trimmed from END)")
     return y_aligned, offset, split
 
 def load_fixed_cebra_model(model_path, name="offset10-model",

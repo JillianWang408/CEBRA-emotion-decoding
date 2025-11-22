@@ -1,0 +1,38 @@
+============================================================
+EMOTION PRESENCE INFORMATION
+============================================================
+
+Aggregated Training Set:
+  Patient codes: 238_239_301_304
+  Total timesteps: 7366
+  Emotions present: [0, 1, 4, 5, 6, 7, 8, 9]
+  Emotion names: ['No emotion', 'Happy', 'Fear', 'Disgust', 'Surprise', 'Neutral', 'Contempt', 'Other']
+  Counts:
+    No emotion: 2179 (29.6%)
+    Happy: 1567 (21.3%)
+    Fear: 213 (2.9%)
+    Disgust: 644 (8.7%)
+    Surprise: 802 (10.9%)
+    Neutral: 788 (10.7%)
+    Contempt: 394 (5.3%)
+    Other: 779 (10.6%)
+
+Test Patient:
+  Patient code: EC272 (ID: 9)
+  Total timesteps: 2751
+  Emotions present: [0, 1, 3, 4, 5, 6, 7, 8, 9]
+  Emotion names: ['No emotion', 'Happy', 'Angry', 'Fear', 'Disgust', 'Surprise', 'Neutral', 'Contempt', 'Other']
+  Counts:
+    No emotion: 642 (23.3%)
+    Happy: 448 (16.3%)
+    Angry: 48 (1.7%)
+    Fear: 82 (3.0%)
+    Disgust: 307 (11.2%)
+    Surprise: 289 (10.5%)
+    Neutral: 344 (12.5%)
+    Contempt: 245 (8.9%)
+    Other: 346 (12.6%)
+
+Emotions in training but NOT in test: set()
+Emotions in test but NOT in training: {3}
+Emotions in both: {0, 1, 4, 5, 6, 7, 8, 9}

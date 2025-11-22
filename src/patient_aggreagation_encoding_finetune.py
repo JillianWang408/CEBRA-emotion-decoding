@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Optional
 
 import numpy as np
 import sys
@@ -22,6 +22,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 import matplotlib.pyplot as plt
+import mat73
+import scipy.io
 
 from cebra.models import init as init_model
 from cebra.data import DatasetxCEBRA, ContrastiveMultiObjectiveLoader
@@ -35,19 +37,39 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+# Patient configuration (inlined to avoid src.config dependency)
+PATIENT_CONFIG = {
+    1:    ("EC238", "238"),
+    2:    ("EC239", "239"),
+    9:    ("EC272", "272"),
+    27:    ("EC301", "301"),
+    28:    ("EC304", "304"),
+    15: ("EC280", "280"),
+    22: ("EC288", "288"),
+    24: ("EC293", "293"),
+    29: ("PR06", "PR06"),
+    30: ("EC325", "325"),
+    31: ("EC326", "326"),
+}
+
+# Data paths
+DATA_SUBDIR = "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC5_1   2   5   6   7   8   9  10  11  12_5"
+NEURAL_FILENAME = "nrcRF_calc_Stim_StimNum_5_Nr_1_msBW_1000_movHeldOut_1.mat"
+EMOTION_FILENAME = "nrcRF_calc_Resp_chan_1_movHeldOut_1.mat"
+
 # Local minimal implementations to avoid importing src.config via full_encoding_finetune
 class GateHead(nn.Module):
     def __init__(self, in_dim: int):
         super().__init__()
-        self.fc = nn.Linear(in_dim, 1)
+        self.fc = nn.Linear(in_dim, 1) #Output: one number (positive = emotion likely, negative = no emotion likely)
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         return self.fc(z).squeeze(-1)
 
 class EmotionHead(nn.Module):
     def __init__(self, in_dim: int, n_active: int):
         super().__init__()
-        self.n_active = int(n_active)
-        self.fc = nn.Linear(in_dim, self.n_active) if self.n_active > 0 else None
+        self.n_active = int(n_active) #Number of emotion classes (9)
+        self.fc = nn.Linear(in_dim, self.n_active) if self.n_active > 0 else None #Linear layer that outputs 9 numbers (one per emotion)
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         if self.n_active == 0:
             return z.new_zeros(z.shape[:-1] + (0,))
@@ -401,8 +423,9 @@ def _build_cebra_config_unsupervised(loader, behavior_indices=None, temperature:
     if behavior_indices is not None:
         try:
             cfg.set_slice(*behavior_indices)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[WARN] Ignoring behavior_indices={behavior_indices}: {e}")
+    # When behavior_indices is None, don't set a slice (CEBRA will use all features automatically)
     cfg.set_loss("FixedCosineInfoNCE", temperature=temperature)
     cfg.set_distribution("time", time_offset=1)
     cfg.push(); cfg.finalize()
@@ -413,8 +436,9 @@ def _build_cebra_config_supervised(loader, behavior_indices=None, temperature: f
     if behavior_indices is not None:
         try:
             cfg.set_slice(*behavior_indices)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[WARN] Ignoring behavior_indices={behavior_indices}: {e}")
+    # When behavior_indices is None, don't set a slice (CEBRA will use all features automatically)
     cfg.set_loss("FixedCosineInfoNCE", temperature=temperature)
     cfg.set_distribution("time_delta", time_delta=1, label_name="position")
     cfg.push(); cfg.finalize()
@@ -456,14 +480,166 @@ def _cebra_train_and_export(model, loader, config, out_dir: Path, full_neural_te
         torch.save(emb, out_dir / "embedding.pt")
     return solver
 
+def load_test_patient_data(patient_id: int) -> Tuple[np.ndarray, np.ndarray]:
+    """Load and z-score a single patient's data for testing."""
+    if patient_id not in PATIENT_CONFIG:
+        known = ", ".join(map(str, sorted(PATIENT_CONFIG.keys())))
+        raise KeyError(f"Unknown patient id {patient_id}. Available ids: {known}")
+    
+    ec_code, _ = PATIENT_CONFIG[patient_id]
+    data_dir = PROJECT_ROOT / "data" / ec_code / DATA_SUBDIR
+    neural_path = data_dir / NEURAL_FILENAME
+    emotion_path = data_dir / EMOTION_FILENAME
+    
+    if not neural_path.exists():
+        raise FileNotFoundError(f"Missing neural data: {neural_path}")
+    if not emotion_path.exists():
+        raise FileNotFoundError(f"Missing emotion data: {emotion_path}")
+    
+    neural = mat73.loadmat(str(neural_path))["stim"].T  # (T, F)
+    emotion = scipy.io.loadmat(str(emotion_path))["resp"].flatten()
+    
+    # Apply same trimming as in aggregation (patient 239)
+    if ec_code == "EC239" or patient_id == 2:
+        max_timesteps = 630
+        if neural.shape[0] > max_timesteps:
+            print(f"[INFO] Trimming patient 239: keeping first {max_timesteps} of {neural.shape[0]} timepoints")
+            neural = neural[:max_timesteps]
+            emotion = emotion[:max_timesteps]
+    
+    if neural.shape[0] != emotion.shape[0]:
+        raise ValueError(f"Sample mismatch: neural ({neural.shape[0]}), emotion ({emotion.shape[0]})")
+    
+    # Z-score per patient (same as aggregation)
+    feature_means = neural.mean(axis=0)
+    feature_stds = neural.std(axis=0)
+    eps = 1e-6
+    adjusted_stds = np.where(feature_stds < eps, 1.0, feature_stds)
+    z_neural = (neural - feature_means) / adjusted_stds
+    
+    return z_neural.astype(np.float32), emotion.astype(np.int32)
+
+def generate_embedding_for_patient(encoder: nn.Module, neural_data: np.ndarray, device: torch.device) -> np.ndarray:
+    """Generate embedding for a patient's neural data using the encoder."""
+    encoder.eval()
+    with torch.no_grad():
+        X = torch.tensor(neural_data, dtype=torch.float32).to(device)  # (T, F)
+        X_bct = X.transpose(0, 1).unsqueeze(0)  # (1, F, T)
+        Z_bdt = encoder(X_bct)  # (1, D, T')
+        Z = Z_bdt.squeeze(0).T.cpu().numpy()  # (T', D)
+    return Z
+
+def plot_embedding_with_test(Z_train: np.ndarray, y_train: np.ndarray, 
+                              Z_test: np.ndarray, y_test: np.ndarray,
+                              out_dir: Path, prefix: str, title_prefix: str,
+                              test_patient_code: str):
+    """
+    Generate and save interactive Plotly embeddings showing both training and test patient data.
+    Test patient points are plotted in a different color (red outline/marker).
+    """
+    import cebra
+    import plotly.graph_objects as go
+    from sklearn.decomposition import PCA
+    
+    # Create separate plots for training and test
+    fig_train = cebra.integrations.plotly.plot_embedding_interactive(
+        Z_train, 
+        embedding_labels=y_train,
+        title=f"{title_prefix} (Training Set)",
+        markersize=3,
+        cmap="tab10"
+    )
+    
+    fig_test = cebra.integrations.plotly.plot_embedding_interactive(
+        Z_test, 
+        embedding_labels=y_test,
+        title=f"{title_prefix} (Test: {test_patient_code})",
+        markersize=3,
+        cmap="tab10"
+    )
+    
+    # Create combined plot: start with training data, then overlay test patient
+    # Use PCA to get 3D coordinates for visualization
+    if Z_train.shape[1] >= 3 and Z_test.shape[1] >= 3:
+        pca = PCA(n_components=3)
+        Z_train_3d = pca.fit_transform(Z_train)
+        Z_test_3d = pca.transform(Z_test)
+        
+        # Create combined figure
+        fig_combined = go.Figure()
+        
+        # Add training points (grouped by emotion, using tab10 colors)
+        unique_emotions_train = np.unique(y_train)
+        colors_train = plt.cm.tab10(np.linspace(0, 1, len(unique_emotions_train)))
+        
+        for i, emo in enumerate(unique_emotions_train):
+            mask = (y_train == emo)
+            fig_combined.add_trace(go.Scatter3d(
+                x=Z_train_3d[mask, 0],
+                y=Z_train_3d[mask, 1],
+                z=Z_train_3d[mask, 2],
+                mode='markers',
+                marker=dict(
+                    size=3,
+                    color=f'rgb({int(255*colors_train[i][0])}, {int(255*colors_train[i][1])}, {int(255*colors_train[i][2])})',
+                    opacity=0.6,
+                    line=dict(width=0.5, color='black')
+                ),
+                name=f'Train: Emotion {int(emo)}',
+                text=[f'Emotion: {int(emo)}' for _ in range(mask.sum())],
+                hovertemplate='Training Set<br>Emotion: %{text}<extra></extra>'
+            ))
+        
+        # Add test patient points (red/magenta color, outlined)
+        unique_emotions_test = np.unique(y_test)
+        for emo in unique_emotions_test:
+            mask = (y_test == emo)
+            fig_combined.add_trace(go.Scatter3d(
+                x=Z_test_3d[mask, 0],
+                y=Z_test_3d[mask, 1],
+                z=Z_test_3d[mask, 2],
+                mode='markers',
+                marker=dict(
+                    size=4,
+                    color='red',
+                    opacity=0.8,
+                    line=dict(width=1.5, color='darkred')
+                ),
+                name=f'Test ({test_patient_code}): Emotion {int(emo)}',
+                text=[f'Test Patient {test_patient_code}<br>Emotion: {int(emo)}' for _ in range(mask.sum())],
+                hovertemplate='%{text}<extra></extra>'
+            ))
+        
+        fig_combined.update_layout(
+            title=f"{title_prefix} (Training + Test: {test_patient_code})",
+            scene=dict(
+                xaxis_title="PC1",
+                yaxis_title="PC2",
+                zaxis_title="PC3"
+            ),
+            width=1000,
+            height=800
+        )
+        
+        fig_combined.write_html(out_dir / f"{prefix}_train_test_interactive.html", include_plotlyjs="embed")
+        print(f"[PLOT] Saved combined interactive embedding → {out_dir / f'{prefix}_train_test_interactive.html'}")
+    else:
+        print(f"[WARN] Embedding dimension too low ({Z_train.shape[1]}, {Z_test.shape[1]}), skipping combined 3D plot")
+    
+    # Save separate plots
+    fig_train.write_html(out_dir / f"{prefix}_train_interactive.html", include_plotlyjs="embed")
+    fig_test.write_html(out_dir / f"{prefix}_test_interactive.html", include_plotlyjs="embed")
+    
+    print(f"[PLOT] Saved separate plots: {prefix}_train_interactive.html, {prefix}_test_interactive.html")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Train encoder on aggregated multi-patient data (from scratch).")
     parser.add_argument(
         "--aggregated-npz",
         type=Path,
-        default=PROJECT_ROOT / "output_patient_aggregation" / "aggregated_patient_data_238_239_272_301.npz",
-        help="Path to aggregated .npz (default: output_patient_aggregation/aggregated_patient_data_238_239_272_301.npz)."
+        default=PROJECT_ROOT / "output_patient_aggregation" / "238_239_272_301" / "aggregated_patient_data_238_239_272_301.npz",
+        help="Path to aggregated .npz (default: output_patient_aggregation/238_239_272_301/aggregated_patient_data_238_239_272_301.npz)."
     )
     parser.add_argument("--output-dir", type=Path, default=None,
                         help="Output dir. Default: output_patient_aggregation/<patient_codes_from_npz>")
@@ -483,17 +659,27 @@ def main():
     # CEBRA phase steps
     parser.add_argument("--unsup-steps", type=int, default=3500, help="Unsupervised (CEBRA-Time) steps.")
     parser.add_argument("--sup-steps", type=int, default=2500, help="Supervised (CEBRA-TimeDelta) steps.")
+    
+    # Test patient for visualization
+    parser.add_argument("--test-patient-id", type=int, default=None,
+                        help="Optional: Patient ID to visualize embeddings alongside training data (e.g., 28 for EC304).")
 
     args = parser.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Derive default output directory based on the aggregated npz file name
+    # Derive default output directory based on the aggregated npz file location
     if args.output_dir is None:
-        # Expect names like aggregated_patient_data_238_239_272_301.npz
-        npz_name = args.aggregated_npz.name
-        m = re.match(r"aggregated_patient_data_(.+)\.npz$", npz_name)
-        code_suffix = m.group(1) if m else "agg_run"
-        out_dir = (args.aggregated_npz.parent / code_suffix).resolve()
+        # If .npz is in a subfolder (e.g., output_patient_aggregation/238_239_272_301/),
+        # use that subfolder. Otherwise, extract patient codes from filename.
+        if args.aggregated_npz.parent.name not in ["output_patient_aggregation", "output_patient_agg"]:
+            # .npz is already in a subfolder, use that folder
+            out_dir = args.aggregated_npz.parent.resolve()
+        else:
+            # .npz is in base directory, extract codes from filename and create subfolder
+            npz_name = args.aggregated_npz.name
+            m = re.match(r"aggregated_patient_data_(.+)\.npz$", npz_name)
+            code_suffix = m.group(1) if m else "agg_run"
+            out_dir = (args.aggregated_npz.parent / code_suffix).resolve()
     else:
         out_dir = args.output_dir.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -519,19 +705,67 @@ def main():
         num_output=args.latent_dim
     ).to(device)
 
+    BEHAVIOR_INDICES = (0, 16)
+
     # ========= Phase A: Unsupervised pretraining (CEBRA-Time) on aggregated data =========
     ds_full = DatasetxCEBRA(neural=neural, position=labels.view(-1, 1).float())
     ds_full.configure_for(encoder)
     unsup_loader = ContrastiveMultiObjectiveLoader(dataset=ds_full, batch_size=512, num_steps=args.unsup_steps)
-    unsup_cfg = _build_cebra_config_unsupervised(unsup_loader, behavior_indices=None)
+    unsup_cfg = _build_cebra_config_unsupervised(unsup_loader, behavior_indices= BEHAVIOR_INDICES) 
     unsup_dir = out_dir / "xcebra_unsupervised"
-    _ = _cebra_train_and_export(encoder, unsup_loader, unsup_cfg, unsup_dir, neural, device, args.unsup_steps)
+    unsup_solver = _cebra_train_and_export(encoder, unsup_loader, unsup_cfg, unsup_dir, neural, device, args.unsup_steps)
+    
+    # Generate and plot embeddings for test patient (if specified) after unsupervised phase
+    if args.test_patient_id is not None:
+        print(f"[PLOT] Generating unsupervised embeddings for test patient {args.test_patient_id}...")
+        test_neural, test_emotion = load_test_patient_data(args.test_patient_id)
+        test_ec_code, test_patient_code = PATIENT_CONFIG[args.test_patient_id]
+        
+        # Generate embeddings
+        Z_train_unsup = torch.load(unsup_dir / "embedding.pt").squeeze(0).T.numpy()  # (T_train, D)
+        Z_test_unsup = generate_embedding_for_patient(encoder, test_neural, device)
+        
+        # Align labels (trim from end to match embedding length)
+        from src.utils import align_embedding_labels
+        y_train_aligned, _, _ = align_embedding_labels(Z_train_unsup, labels.numpy())
+        y_test_aligned, _, _ = align_embedding_labels(Z_test_unsup, test_emotion)
+        
+        # Plot
+        plot_embedding_with_test(
+            Z_train_unsup, y_train_aligned,
+            Z_test_unsup, y_test_aligned,
+            unsup_dir, "emb_unsup", "Unsupervised",
+            test_patient_code
+        )
 
     # ========= Phase B: Supervised fine-tuning (CEBRA-TimeDelta) =========
     sup_loader = ContrastiveMultiObjectiveLoader(dataset=ds_full, batch_size=512, num_steps=args.sup_steps)
-    sup_cfg = _build_cebra_config_supervised(sup_loader, behavior_indices=None)
+    sup_cfg = _build_cebra_config_supervised(sup_loader, behavior_indices=BEHAVIOR_INDICES)
     sup_dir = out_dir / "xcebra_supervised"
-    _ = _cebra_train_and_export(encoder, sup_loader, sup_cfg, sup_dir, neural, device, args.sup_steps)
+    sup_solver = _cebra_train_and_export(encoder, sup_loader, sup_cfg, sup_dir, neural, device, args.sup_steps)
+    
+    # Generate and plot embeddings for test patient (if specified) after supervised phase
+    if args.test_patient_id is not None:
+        print(f"[PLOT] Generating supervised embeddings for test patient {args.test_patient_id}...")
+        test_neural, test_emotion = load_test_patient_data(args.test_patient_id)
+        test_ec_code, test_patient_code = PATIENT_CONFIG[args.test_patient_id]
+        
+        # Generate embeddings
+        Z_train_sup = torch.load(sup_dir / "embedding.pt").squeeze(0).T.numpy()  # (T_train, D)
+        Z_test_sup = generate_embedding_for_patient(encoder, test_neural, device)
+        
+        # Align labels (trim from end to match embedding length)
+        from src.utils import align_embedding_labels
+        y_train_aligned, _, _ = align_embedding_labels(Z_train_sup, labels.numpy())
+        y_test_aligned, _, _ = align_embedding_labels(Z_test_sup, test_emotion)
+        
+        # Plot
+        plot_embedding_with_test(
+            Z_train_sup, y_train_aligned,
+            Z_test_sup, y_test_aligned,
+            sup_dir, "emb_sup", "Supervised (time_delta)",
+            test_patient_code
+        )
 
     # From-scratch only: disable L2SP entirely
     mu_l2sp = 0.0

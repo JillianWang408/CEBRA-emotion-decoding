@@ -254,14 +254,18 @@ def aggregate_patients(
     if not patient_ids:
         raise ValueError("`patient_ids` must contain at least one patient identifier.")
 
-    output_path = Path(output_dir).expanduser().resolve()
+    # Build subfolder name from patient codes (e.g., 238_239_272_301)
+    code_suffix = "_".join(PATIENT_CONFIG[pid][1] for pid in patient_ids)
+    
+    # Create subfolder: output_dir/<patient_codes>/
+    base_output_path = Path(output_dir).expanduser().resolve()
+    output_path = base_output_path / code_suffix
     output_path.mkdir(parents=True, exist_ok=True)
 
     combined_neural, combined_emotion, combined_patient_ids, stats = _aggregate_patients(patient_ids)
 
     if save_arrays:
-        # Build a suffix using EC codes (e.g., 238_239_272)
-        code_suffix = "_".join(PATIENT_CONFIG[pid][1] for pid in patient_ids)
+        # Save in subfolder
         agg_name = f"aggregated_patient_data_{code_suffix}.npz"
         np.savez(
             output_path / agg_name,
@@ -269,6 +273,7 @@ def aggregate_patients(
             emotion=combined_emotion,
             patient_ids=combined_patient_ids,
         )
+        print(f"[SAVE] Saved aggregated data → {output_path / agg_name}")
 
     if make_plot:
         # Build per-patient z-neural list again for plotting continuity
@@ -287,10 +292,11 @@ def aggregate_patients(
             z_neural, _, _ = _zscore_features(neural)
             z_neural_segments.append(z_neural)
             labels.append(paths.patient_code)
-        code_suffix = "_".join(PATIENT_CONFIG[pid][1] for pid in patient_ids)
         plot_filename = f"concatenated_heatmap_{code_suffix}.png"
         plot_path = output_path / plot_filename if save_arrays else None
         _plot_concatenated_timeseries(z_neural_segments, labels, save_path=plot_path, show=True)
+        if save_arrays and plot_path:
+            print(f"[SAVE] Saved plot → {plot_path}")
 
     return combined_neural, combined_emotion, combined_patient_ids
 
