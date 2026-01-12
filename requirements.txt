@@ -8,3 +8,4 @@ seaborn
 numpy>=1.26.2
 matplotlib
 mat73
+tqdm

@@ -24,6 +24,8 @@ from torch.utils.data import Dataset, DataLoader
 import matplotlib.pyplot as plt
 import mat73
 import scipy.io
+import plotly.graph_objects as go
+from sklearn.decomposition import PCA
 
 from cebra.models import init as init_model
 from cebra.data import DatasetxCEBRA, ContrastiveMultiObjectiveLoader
@@ -144,6 +146,27 @@ def tc_emo(logits: torch.Tensor) -> torch.Tensor:
         return logits.new_zeros(())
     logp = F.log_softmax(logits, dim=-1)  # (B, T, n_classes)
     return kl_divergence(logp[:, 1:], logp[:, :-1]).mean()
+
+def align_embedding_labels(Z, y_full):
+    """Align embedding with labels, handling temporal offset.
+    
+    With valid padding (padding=0), PyTorch Conv1d output aligns with START of input.
+    So we trim labels from the END (use first T_emb labels).
+    
+    Args:
+        Z: Embedding array of shape (T_emb, D)
+        y_full: Full label array of shape (T_full,)
+    
+    Returns:
+        y_aligned: Aligned labels of shape (T_emb,)
+    """
+    T_emb = Z.shape[0]
+    T_full = len(y_full)
+    offset = T_full - T_emb
+    assert offset >= 0, f"Embedding longer than labels: {T_emb} > {T_full}"
+    # Trim from END: use first T_emb labels (last 'offset' labels are lost)
+    y_aligned = y_full[:T_emb]
+    return y_aligned
 
 
 def to_tensor(x):
@@ -445,7 +468,45 @@ def _build_cebra_config_supervised(loader, behavior_indices=None, temperature: f
     return cfg
 
 def _cebra_train_and_export(model, loader, config, out_dir: Path, full_neural_tensor: torch.Tensor,
-                            device: torch.device, num_steps: int):
+                            device: torch.device, num_steps: int, phase_name: str = "", 
+                            force_retrain: bool = False):
+    """Train CEBRA model with checkpoint detection. If checkpoint exists, skip training.
+    
+    Args:
+        force_retrain: If True, ignore existing checkpoints and retrain from scratch.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Check if checkpoint exists
+    checkpoint_path = out_dir / "model_weights.pt"
+    embedding_path = out_dir / "embedding.pt"
+    
+    if not force_retrain and checkpoint_path.exists() and embedding_path.exists():
+        print(f"[CHECKPOINT] Found existing {phase_name} checkpoint, loading model and embedding...")
+        print(f"[CHECKPOINT] To force retraining, use --force-retrain flag")
+        model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+        model.eval()  # Set to eval mode for inference
+        print(f"[CHECKPOINT] Loaded {phase_name} model from {checkpoint_path}")
+        # Return a dummy solver (we won't use it, but need to return something)
+        opt = torch.optim.Adam(list(model.parameters()) + list(config.criterion.parameters()), lr=3e-4, weight_decay=0.0)
+        solver = _cebra.solver.init(
+            name="multiobjective-solver",
+            model=model,
+            feature_ranges=config.feature_ranges,
+            regularizer=JacobianReg(),
+            renormalize=True,
+            use_sam=False,
+            criterion=config.criterion,
+            optimizer=opt,
+            tqdm_on=True
+        ).to(device)
+        return solver
+    
+    # No checkpoint found or force_retrain enabled, train from scratch
+    if force_retrain and checkpoint_path.exists():
+        print(f"[FORCE RETRAIN] Overriding existing {phase_name} checkpoint, training from scratch ({num_steps} steps)...")
+    else:
+        print(f"[TRAIN] Starting {phase_name} training from scratch ({num_steps} steps)...")
     opt = torch.optim.Adam(
         list(model.parameters()) + list(config.criterion.parameters()),
         lr=3e-4, weight_decay=0.0
@@ -469,15 +530,19 @@ def _cebra_train_and_export(model, loader, config, out_dir: Path, full_neural_te
         end_weight=0.1
     )
     solver.fit(loader=loader, valid_loader=None, scheduler_regularizer=scheduler)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    torch.save(model.state_dict(), out_dir / "model_weights.pt")
+    
+    # Save checkpoint
+    torch.save(model.state_dict(), checkpoint_path)
+    print(f"[CHECKPOINT] Saved {phase_name} model to {checkpoint_path}")
+    
     # export embedding on full sequence
     model.eval()
     with torch.no_grad():
         X_full = full_neural_tensor.to(device)              # (T, F)
         X_full_bct = X_full.transpose(0, 1).unsqueeze(0)    # (1, F, T)
         emb = model(X_full_bct).detach().cpu()              # (1, D, T')
-        torch.save(emb, out_dir / "embedding.pt")
+        torch.save(emb, embedding_path)
+    print(f"[CHECKPOINT] Saved {phase_name} embedding to {embedding_path}")
     return solver
 
 def load_test_patient_data(patient_id: int) -> Tuple[np.ndarray, np.ndarray]:
@@ -535,11 +600,9 @@ def plot_embedding_with_test(Z_train: np.ndarray, y_train: np.ndarray,
                               test_patient_code: str):
     """
     Generate and save interactive Plotly embeddings showing both training and test patient data.
-    Test patient points are plotted in a different color (red outline/marker).
+    Test patient points are plotted in a different color (red marker).
     """
     import cebra
-    import plotly.graph_objects as go
-    from sklearn.decomposition import PCA
     
     # Create separate plots for training and test
     fig_train = cebra.integrations.plotly.plot_embedding_interactive(
@@ -582,15 +645,14 @@ def plot_embedding_with_test(Z_train: np.ndarray, y_train: np.ndarray,
                 marker=dict(
                     size=3,
                     color=f'rgb({int(255*colors_train[i][0])}, {int(255*colors_train[i][1])}, {int(255*colors_train[i][2])})',
-                    opacity=0.6,
-                    line=dict(width=0.5, color='black')
+                    opacity=0.6
                 ),
                 name=f'Train: Emotion {int(emo)}',
                 text=[f'Emotion: {int(emo)}' for _ in range(mask.sum())],
                 hovertemplate='Training Set<br>Emotion: %{text}<extra></extra>'
             ))
         
-        # Add test patient points (red/magenta color, outlined)
+        # Add test patient points (red/magenta color)
         unique_emotions_test = np.unique(y_test)
         for emo in unique_emotions_test:
             mask = (y_test == emo)
@@ -602,8 +664,7 @@ def plot_embedding_with_test(Z_train: np.ndarray, y_train: np.ndarray,
                 marker=dict(
                     size=4,
                     color='red',
-                    opacity=0.8,
-                    line=dict(width=1.5, color='darkred')
+                    opacity=0.8
                 ),
                 name=f'Test ({test_patient_code}): Emotion {int(emo)}',
                 text=[f'Test Patient {test_patient_code}<br>Emotion: {int(emo)}' for _ in range(mask.sum())],
@@ -645,7 +706,7 @@ def main():
                         help="Output dir. Default: output_patient_aggregation/<patient_codes_from_npz>")
 
     # Training hyperparameters
-    parser.add_argument("--latent-dim", type=int, default=16)
+    parser.add_argument("--latent-dim", type=int, default=10)
     parser.add_argument("--seq-len", type=int, default=64)
     parser.add_argument("--stride", type=int, default=8)
     parser.add_argument("--batch-size", type=int, default=32)
@@ -663,6 +724,10 @@ def main():
     # Test patient for visualization
     parser.add_argument("--test-patient-id", type=int, default=None,
                         help="Optional: Patient ID to visualize embeddings alongside training data (e.g., 28 for EC304).")
+    
+    # Checkpoint override
+    parser.add_argument("--force-retrain", action="store_true",
+                        help="Force retraining even if checkpoints exist. Overrides existing CEBRA phase checkpoints.")
 
     args = parser.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -705,7 +770,7 @@ def main():
         num_output=args.latent_dim
     ).to(device)
 
-    BEHAVIOR_INDICES = (0, 16)
+    BEHAVIOR_INDICES = (0, 10)
 
     # ========= Phase A: Unsupervised pretraining (CEBRA-Time) on aggregated data =========
     ds_full = DatasetxCEBRA(neural=neural, position=labels.view(-1, 1).float())
@@ -713,7 +778,7 @@ def main():
     unsup_loader = ContrastiveMultiObjectiveLoader(dataset=ds_full, batch_size=512, num_steps=args.unsup_steps)
     unsup_cfg = _build_cebra_config_unsupervised(unsup_loader, behavior_indices= BEHAVIOR_INDICES) 
     unsup_dir = out_dir / "xcebra_unsupervised"
-    unsup_solver = _cebra_train_and_export(encoder, unsup_loader, unsup_cfg, unsup_dir, neural, device, args.unsup_steps)
+    unsup_solver = _cebra_train_and_export(encoder, unsup_loader, unsup_cfg, unsup_dir, neural, device, args.unsup_steps, phase_name="unsupervised", force_retrain=args.force_retrain)
     
     # Generate and plot embeddings for test patient (if specified) after unsupervised phase
     if args.test_patient_id is not None:
@@ -726,9 +791,8 @@ def main():
         Z_test_unsup = generate_embedding_for_patient(encoder, test_neural, device)
         
         # Align labels (trim from end to match embedding length)
-        from src.utils import align_embedding_labels
-        y_train_aligned, _, _ = align_embedding_labels(Z_train_unsup, labels.numpy())
-        y_test_aligned, _, _ = align_embedding_labels(Z_test_unsup, test_emotion)
+        y_train_aligned = align_embedding_labels(Z_train_unsup, labels.numpy())
+        y_test_aligned = align_embedding_labels(Z_test_unsup, test_emotion)
         
         # Plot
         plot_embedding_with_test(
@@ -742,7 +806,7 @@ def main():
     sup_loader = ContrastiveMultiObjectiveLoader(dataset=ds_full, batch_size=512, num_steps=args.sup_steps)
     sup_cfg = _build_cebra_config_supervised(sup_loader, behavior_indices=BEHAVIOR_INDICES)
     sup_dir = out_dir / "xcebra_supervised"
-    sup_solver = _cebra_train_and_export(encoder, sup_loader, sup_cfg, sup_dir, neural, device, args.sup_steps)
+    sup_solver = _cebra_train_and_export(encoder, sup_loader, sup_cfg, sup_dir, neural, device, args.sup_steps, phase_name="supervised", force_retrain=args.force_retrain)
     
     # Generate and plot embeddings for test patient (if specified) after supervised phase
     if args.test_patient_id is not None:
@@ -755,9 +819,8 @@ def main():
         Z_test_sup = generate_embedding_for_patient(encoder, test_neural, device)
         
         # Align labels (trim from end to match embedding length)
-        from src.utils import align_embedding_labels
-        y_train_aligned, _, _ = align_embedding_labels(Z_train_sup, labels.numpy())
-        y_test_aligned, _, _ = align_embedding_labels(Z_test_sup, test_emotion)
+        y_train_aligned = align_embedding_labels(Z_train_sup, labels.numpy())
+        y_test_aligned = align_embedding_labels(Z_test_sup, test_emotion)
         
         # Plot
         plot_embedding_with_test(
@@ -770,27 +833,66 @@ def main():
     # From-scratch only: disable L2SP entirely
     mu_l2sp = 0.0
 
-    # Train / Finetune
-    enc, gate, emo, logs = finetune_two_stage(
-        encoder=encoder,
-        train_loader=dl_tr, val_loader=dl_va,
-        emb_dim=args.latent_dim, device=device,
-        no_emotion_global=0,
-        lr_head=args.lr_head, lr_enc=args.lr_enc, weight_decay=args.weight_decay,
-        lambda_tc=args.lambda_tc, mu_l2sp=mu_l2sp,
-        max_epochs=args.epochs, patience=args.patience,
-    )
-
-    # Save models
-    torch.save({"state_dict": enc.state_dict(), "latent_dim": args.latent_dim}, out_dir / "encoder_finetuned.pt")
-    torch.save({"state_dict": gate.state_dict()}, out_dir / "gate_head.pt")
-    torch.save({"state_dict": emo.state_dict()},  out_dir / "emo_head.pt")
-    torch.save({
-        "history": logs["history"],
-        "val_best_f1": logs["val_best_f1"],
-        "best_tau": logs["best_tau"]
-    }, out_dir / "finetune_logs.pt")
+    # Check if finetuned models already exist
+    encoder_finetuned_path = out_dir / "encoder_finetuned.pt"
+    gate_head_path = out_dir / "gate_head.pt"
+    emo_head_path = out_dir / "emo_head.pt"
     
+    if not args.force_retrain and encoder_finetuned_path.exists() and gate_head_path.exists() and emo_head_path.exists():
+        print(f"[CHECKPOINT] Found existing finetuned models, skipping finetuning phase...")
+        print(f"[CHECKPOINT] To force retraining, use --force-retrain flag")
+        
+        # Load existing models
+        encoder_data = torch.load(encoder_finetuned_path, map_location=device, weights_only=False)
+        enc = init_model(
+            name="offset10-model",
+            num_neurons=neural.shape[1],
+            num_units=256,
+            num_output=encoder_data.get("latent_dim", args.latent_dim)
+        ).to(device)
+        enc.load_state_dict(encoder_data["state_dict"])
+        
+        gate = GateHead(args.latent_dim).to(device)
+        gate.load_state_dict(torch.load(gate_head_path, map_location=device, weights_only=False)["state_dict"])
+        
+        emo = EmotionHead(args.latent_dim, n_active=9).to(device)
+        emo.load_state_dict(torch.load(emo_head_path, map_location=device, weights_only=False)["state_dict"])
+        
+        # Load logs
+        if (out_dir / "finetune_logs.pt").exists():
+            logs_data = torch.load(out_dir / "finetune_logs.pt", map_location="cpu", weights_only=False)
+            logs = {
+                "val_best_f1": logs_data.get("val_best_f1", 0.0),
+                "best_tau": logs_data.get("best_tau", 0.5),
+                "history": logs_data.get("history", {})
+            }
+        else:
+            logs = {"val_best_f1": 0.0, "best_tau": 0.5, "history": {}}
+    else:
+        if args.force_retrain and encoder_finetuned_path.exists():
+            print(f"[FORCE RETRAIN] Overriding existing finetuned models, retraining from scratch...")
+        
+        # Train / Finetune
+        enc, gate, emo, logs = finetune_two_stage(
+            encoder=encoder,
+            train_loader=dl_tr, val_loader=dl_va,
+            emb_dim=args.latent_dim, device=device,
+            no_emotion_global=0,
+            lr_head=args.lr_head, lr_enc=args.lr_enc, weight_decay=args.weight_decay,
+            lambda_tc=args.lambda_tc, mu_l2sp=mu_l2sp,
+            max_epochs=args.epochs, patience=args.patience,
+        )
+        
+        # Save models (only if we trained them)
+        torch.save({"state_dict": enc.state_dict(), "latent_dim": args.latent_dim}, out_dir / "encoder_finetuned.pt")
+        torch.save({"state_dict": gate.state_dict()}, out_dir / "gate_head.pt")
+        torch.save({"state_dict": emo.state_dict()},  out_dir / "emo_head.pt")
+        torch.save({
+            "history": logs["history"],
+            "val_best_f1": logs["val_best_f1"],
+            "best_tau": logs["best_tau"]
+        }, out_dir / "finetune_logs.pt")
+
     # Save comprehensive metadata with all hyperparameters and best results
     torch.save({
         "hyperparams": {
