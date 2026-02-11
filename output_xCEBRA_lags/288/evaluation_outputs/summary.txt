@@ -1,3 +1,0 @@
-Patient 22
-Per-fold in-vocab acc: [single split]
-Mean ± SD: 0.5607 ± 0.0000
