@@ -1,0 +1,27 @@
+{
+  "phase": "unsupervised",
+  "latent_dim": 16,
+  "eegnet_config": {
+    "nb_classes": 7,
+    "Chans": 1000,
+    "Samples": 32,
+    "dropoutRate": 0.5,
+    "kernLength": 8,
+    "F1": 8,
+    "D": 2,
+    "F2": 16,
+    "dropoutType": "Dropout",
+    "window_size": 32,
+    "stride": 1
+  },
+  "feature_info": {
+    "feature_dim": 16,
+    "n_timepoints": 1363,
+    "window_features_shape": [
+      1332,
+      16
+    ],
+    "aggregation_method": "mean"
+  },
+  "feature_source": "eegnet"
+}

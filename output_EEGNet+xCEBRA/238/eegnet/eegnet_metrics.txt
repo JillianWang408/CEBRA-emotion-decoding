@@ -1,0 +1,23 @@
+EEGNet Classification Results
+==================================================
+
+Test Accuracy: 40.08%
+Test F1 (macro): 0.3138
+Test F1 (weighted): 0.3913
+Best Test Loss: 1.7994
+Best Test Accuracy: 40.08%
+
+Classification Report:
+--------------------------------------------------
+              precision    recall  f1-score   support
+
+           0       0.78      0.30      0.43       120
+           1       0.00      0.00      0.00        27
+           2       0.42      0.73      0.53        30
+           3       0.18      0.68      0.29        25
+           5       0.00      0.00      0.00         9
+           6       0.56      0.71      0.63        31
+
+    accuracy                           0.40       242
+   macro avg       0.32      0.40      0.31       242
+weighted avg       0.53      0.40      0.39       242

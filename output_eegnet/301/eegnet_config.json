@@ -1,0 +1,13 @@
+{
+  "nb_classes": 8,
+  "Chans": 1000,
+  "Samples": 32,
+  "dropoutRate": 0.5,
+  "kernLength": 8,
+  "F1": 8,
+  "D": 2,
+  "F2": 16,
+  "dropoutType": "Dropout",
+  "window_size": 32,
+  "stride": 1
+}

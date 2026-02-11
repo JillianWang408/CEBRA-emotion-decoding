@@ -1,0 +1,14 @@
+# for CEBRA specifically:
+# pip install -r requirements-cebra.txt
+# Requires python_version == 3.12
+
+cebra[integrations]==0.6.0a1
+ratinabox
+torch
+scikit-learn==1.5.0
+scipy
+seaborn
+numpy>=1.26.2
+matplotlib
+mat73
+tqdm

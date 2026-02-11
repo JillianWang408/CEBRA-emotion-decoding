@@ -1,0 +1,7 @@
+node,R2_behavior,acc_knn,acc_logreg
+LOFC_Medial,-2.4323,0.2143,0.2245
+LOFC_Lateral,-2.0462,0.1658,0.2219
+ROFC_Medial,-2.3081,0.1505,0.1250
+ROFC_Lateral,-2.0273,0.1429,0.1684
+LC,-1.6760,0.2066,0.2296
+RC,-2.2877,0.1046,0.1148

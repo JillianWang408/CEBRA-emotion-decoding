@@ -1,0 +1,18 @@
+# DPAD-only environment (do not mix with CEBRA/PyTorch env).
+# Step 1: pip install -r requirements-dpad.txt
+# Step 2: pip install dpad
+# macOS ARM64: use tensorflow-macos 2.15.1; Linux/Windows: tensorflow 2.15.1
+
+tensorflow==2.15.1
+numpy
+scipy
+scikit-learn
+pandas
+matplotlib
+seaborn
+mat73
+tqdm==4.66.4
+coloredlogs
+xxhash==3.5.0
+sympy
+PSID==1.2.5
