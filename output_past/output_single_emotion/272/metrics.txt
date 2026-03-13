@@ -1,0 +1,7 @@
+patient: 272
+classifier: dpad
+n_train_trials: 88
+train_emotion_summary: No emotion: 3, Amusement: 17, Anger: 2, Confused: 3, Awe: 11, Disgust: 13, Fear: 15, Affection: 9, Sadness: 15
+n_test_trials: 21
+accuracy: 0.0000
+macro_f1: 0.0000

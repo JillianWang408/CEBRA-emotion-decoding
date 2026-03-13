@@ -1,0 +1,14 @@
+{
+  "decoder_type": "svc_C10",
+  "best_tau": 0.3,
+  "best_emotion_scale": 0.8,
+  "no_emotion_model_idx": 3,
+  "active_model_indices": [
+    0,
+    1,
+    2,
+    4,
+    5,
+    6
+  ]
+}

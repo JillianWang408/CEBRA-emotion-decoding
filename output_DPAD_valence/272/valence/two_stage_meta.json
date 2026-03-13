@@ -1,0 +1,13 @@
+{
+  "best_tau": 0.3,
+  "best_emotion_scale": 2.0,
+  "no_emotion_model_idx": 3,
+  "active_model_indices": [
+    0,
+    1,
+    2,
+    4,
+    5,
+    6
+  ]
+}

@@ -1,0 +1,7 @@
+patient: 239
+classifier: dpad
+n_train_trials: 28
+train_emotion_summary: No emotion: 12, Amusement: 8, Disgust: 1, Affection: 7
+n_test_trials: 6
+accuracy: 0.3333
+macro_f1: 0.1000

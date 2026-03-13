@@ -1,12 +1,17 @@
 """
-DPAD pipeline for emotion-from-neural decoding (xCEBRA).
+DPAD pipeline for 9-emotion decoding (xCEBRA).
+
+Uses calc (train) and pred (test) files - same split as single_emotion.
 
 Run from project root with DPAD env activated:
   pip install -r requirements-dpad.txt
-  python -m src.DPAD.DPAD_main --patient-id 1 [--skip-flexible] [--nx 16] [--n1 16]
+  python -m src.DPAD.DPAD_9emotion --patient-id 1 [--skip-flexible]
 
-  # Two-stage gating (gate: no vs emotion, then emotion head) to mitigate no-emotion dominance:
-  python -m src.DPAD.DPAD_main --patient-id 1 --two-stage
+  # Two-stage gating (gate: no vs emotion, then emotion head):
+  python -m src.DPAD.DPAD_9emotion --patient-id 1 --two-stage
+
+  # Override: single file with temporal split (80/20):
+  python -m src.DPAD.DPAD_9emotion --neural-path <path> --emotion-path <path>
 """
 
 from __future__ import annotations
@@ -79,6 +84,8 @@ from src.general.utils_visualization import (
     save_decoding_timecourse,
     plot_decoding_timecourses,
 )
+from src.DPAD.two_stage import train_two_stage_heads, predict_two_stage
+from src.DPAD.DPAD_valence import oversample_train
 
 
 def _load_config(patient_id: int):
@@ -93,12 +100,13 @@ def _load_config(patient_id: int):
 # -----------------------------------------------------------------------------
 # 2) DATA LOADING – neural (T×D) and emotion (T,) aligned in time
 # -----------------------------------------------------------------------------
-def load_neural_emotion(neural_path: Path, emotion_path: Path):
+def load_neural_emotion(neural_path: Path, emotion_path: Path, label_to_idx: dict | None = None):
     """
     Load ECoG (stim) and emotion labels (resp); return arrays aligned in time.
     Labels are 0-9; some patients may have only a subset (e.g. 0,1,2,3,4,5,6,7,9).
     Same remapping as train_eegnet: label_to_idx (original -> model index), idx_to_label
     (model index -> original). Remap to contiguous 0..n-1 so model expects [0, nb_classes-1].
+    If label_to_idx is provided, use it for remapping (consistent mapping across train/test).
     Returns (neural, emotion_remapped, label_to_idx, idx_to_label, missing_classes).
     """
     try:
@@ -112,13 +120,14 @@ def load_neural_emotion(neural_path: Path, emotion_path: Path):
     neural = np.asarray(neural[:T], dtype=np.float64)
     emotion = emotion[:T]
 
-    # Same as train_eegnet: remap to consecutive indices (0..n-1) for missing-class handling
     unique_emotions = np.unique(emotion)
     expected_classes = set(range(10))  # 0-9
     missing_classes = expected_classes - set(unique_emotions)
-    label_to_idx = {int(orig): idx for idx, orig in enumerate(sorted(unique_emotions))}
+    if label_to_idx is None:
+        label_to_idx = {int(orig): idx for idx, orig in enumerate(sorted(unique_emotions))}
     idx_to_label = {idx: int(orig) for orig, idx in label_to_idx.items()}
-    emotion_remapped = np.array([label_to_idx[int(v)] for v in emotion], dtype=np.int64)
+    # Same remapping: original -> model index (labels not in mapping get -1)
+    emotion_remapped = np.array([label_to_idx.get(int(v), -1) for v in emotion], dtype=np.int64)
     return neural, emotion_remapped, label_to_idx, idx_to_label, missing_classes
 
 
@@ -244,11 +253,19 @@ def predict_dpad(model, y_test: np.ndarray):
 # -----------------------------------------------------------------------------
 # 7) EVALUATION – decoding accuracy; optional embedding-based accuracy
 # -----------------------------------------------------------------------------
-def _z_pred_to_class(z_pred) -> np.ndarray:
-    """Convert z_pred (probs or logits) to class indices (T,)."""
+def _z_pred_to_class(z_pred, smooth_window: int | None = None) -> np.ndarray:
+    """Convert z_pred (probs or logits) to class indices (T,). Optionally smooth probs temporally first."""
     if hasattr(z_pred, "numpy"):
         z_pred = np.asarray(z_pred)
     z_pred = np.asarray(z_pred)
+    if smooth_window is not None and smooth_window > 1:
+        from scipy.ndimage import uniform_filter1d
+        if z_pred.ndim == 3:
+            z_pred = uniform_filter1d(z_pred.astype(np.float64), size=smooth_window, axis=0, mode="nearest")
+            z_pred = z_pred / (z_pred.sum(axis=-1, keepdims=True) + 1e-9)
+        elif z_pred.ndim == 2:
+            z_pred = uniform_filter1d(z_pred.astype(np.float64), size=smooth_window, axis=0, mode="nearest")
+            z_pred = z_pred / (z_pred.sum(axis=1, keepdims=True) + 1e-9)
     if z_pred.ndim == 3:
         return np.argmax(z_pred, axis=-1).squeeze()
     if z_pred.ndim == 2:
@@ -268,135 +285,8 @@ def evaluate_decoding(z_true: np.ndarray, z_pred, n_classes: int):
 
 
 # -----------------------------------------------------------------------------
-# 8) TWO-STAGE GATING – Gate (no vs emotion) + Emotion (active classes only)
-# Mirrors CEBRA full_decoding_finetune / full_encoding_finetune two-head approach.
+# 8) TWO-STAGE GATING – imported from two_stage.py (StandardScaler + decoder grid)
 # -----------------------------------------------------------------------------
-def _ensure_samples_last(x: np.ndarray, n_expected: int) -> np.ndarray:
-    """Return (T, D) with samples as rows for sklearn. DPAD returns latent (nx, T) or (T, nx)."""
-    x = np.asarray(x)
-    if x.ndim == 1:
-        return x.reshape(-1, 1)
-    # If second dim matches n_expected (time points), first dim is latent -> transpose to (T, nx)
-    if x.shape[1] == n_expected and x.shape[0] != n_expected:
-        return x.T
-    return x
-
-
-def train_two_stage_heads(
-    x_train: np.ndarray,
-    z_train: np.ndarray,
-    no_emotion_model_idx: int,
-    idx_to_label: dict,
-    label_to_idx: dict,
-) -> tuple:
-    """
-    Train gate (binary: no vs emotion) and emotion (active classes) classifiers on DPAD latent.
-    Returns (gate_clf, emo_clf, active_model_indices, best_tau, best_emotion_scale).
-    active_model_indices: model indices for emotion classes (excludes no-emotion).
-    """
-    T = len(z_train)
-    x = _ensure_samples_last(x_train, T)  # (T, D)
-    n_active = len(idx_to_label) - 1 if no_emotion_model_idx is not None else len(idx_to_label)
-    active_model_indices = [i for i in idx_to_label if i != no_emotion_model_idx]
-    if n_active == 0:
-        return None, None, [], 0.5, 1.0
-
-    # Gate target: 0 = no emotion, 1 = emotion
-    y_gate = (z_train != no_emotion_model_idx).astype(np.int32)
-
-    # Emotion target: map model indices to 0..n_active-1 (only for emotion samples)
-    model_to_active = {mi: a for a, mi in enumerate(active_model_indices)}
-    y_emo = np.array([model_to_active.get(int(z), -1) for z in z_train], dtype=np.int32)
-    mask_emo = y_emo >= 0
-
-    gate_clf = LogisticRegression(solver="lbfgs", class_weight="balanced", C=1.0, max_iter=2000)
-    gate_clf.fit(x, y_gate)
-
-    if mask_emo.sum() < 2:
-        return gate_clf, None, active_model_indices, 0.5, 1.0
-
-    emo_clf = LogisticRegression(solver="lbfgs", class_weight="balanced", C=1.0, max_iter=2000)
-    emo_clf.fit(x[mask_emo], y_emo[mask_emo])
-
-    # Calibration split for tau and emotion_scale grid search
-    sss = StratifiedShuffleSplit(n_splits=1, test_size=0.15, random_state=42)
-    try:
-        tr_idx, cal_idx = next(sss.split(x, y_gate))
-    except ValueError:
-        tr_idx, cal_idx = np.arange(len(x)), np.array([], dtype=int)
-    if len(cal_idx) < 10:
-        return gate_clf, emo_clf, active_model_indices, 0.5, 1.0
-
-    x_cal, z_cal = x[cal_idx], z_train[cal_idx]
-    gate_proba_cal = gate_clf.predict_proba(x_cal)[:, 1]
-    emo_proba_cal = emo_clf.predict_proba(x_cal) if emo_clf is not None else np.ones((len(x_cal), n_active)) / n_active
-
-    # Build P_full: P(no), P(active_0), ..., P(active_{n_active-1})
-    p_no_cal = 1.0 - gate_proba_cal
-    p_act_cal = gate_proba_cal[:, np.newaxis] * emo_proba_cal
-    P_cal = np.concatenate([p_no_cal[:, np.newaxis], p_act_cal], axis=1)
-
-    tau_grid = [0.1, 0.3, 0.4, 0.45, 0.5, 0.55]
-    scale_grid = [0.5, 0.8, 1.0, 1.2, 1.5, 2.0]
-    best_tau, best_scale, best_f1 = 0.5, 1.0, -1.0
-
-    for scale in scale_grid:
-        pa_s = gate_proba_cal * scale
-        p_no_s = np.clip(1.0 - pa_s, 1e-6, 1 - 1e-6)
-        p_act_s = np.clip(pa_s[:, np.newaxis] * emo_proba_cal, 1e-6, 1 - 1e-6)
-        total = p_no_s[:, np.newaxis] + p_act_s.sum(axis=1, keepdims=True)
-        p_no_s = p_no_s / total.squeeze()
-        p_act_s = p_act_s / total
-        P_s = np.concatenate([p_no_s[:, np.newaxis], p_act_s], axis=1)
-
-        for tau in tau_grid:
-            y_pred = np.zeros(len(z_cal), dtype=np.int32)
-            pa = 1.0 - P_s[:, 0]
-            above = pa >= tau
-            y_pred[~above] = no_emotion_model_idx
-            if above.any():
-                y_pred[above] = np.array([active_model_indices[int(np.argmax(P_s[i, 1:]))] for i in np.where(above)[0]])
-            f1 = f1_score(z_cal, y_pred, average="macro", zero_division=0)
-            if f1 > best_f1:
-                best_f1, best_tau, best_scale = f1, tau, scale
-
-    return gate_clf, emo_clf, active_model_indices, best_tau, best_scale
-
-
-def predict_two_stage(
-    x_pred: np.ndarray,
-    gate_clf,
-    emo_clf,
-    no_emotion_model_idx: int,
-    active_model_indices: list,
-    tau: float,
-    emotion_scale: float,
-    n_expected: int,
-) -> np.ndarray:
-    """
-    Two-stage prediction: gate prob * emotion softmax. Tau rule: if gate_prob < tau -> no_emotion.
-    Returns class indices in model space.
-    """
-    x = _ensure_samples_last(x_pred, n_expected)
-    gate_proba = gate_clf.predict_proba(x)[:, 1]
-    if emo_clf is None:
-        emo_proba = np.ones((len(x), len(active_model_indices))) / len(active_model_indices)
-    else:
-        emo_proba = emo_clf.predict_proba(x)
-
-    pa = gate_proba * emotion_scale
-    p_no = np.clip(1.0 - pa, 1e-6, 1 - 1e-6)
-    p_act = np.clip(pa[:, np.newaxis] * emo_proba, 1e-6, 1 - 1e-6)
-    total = p_no[:, np.newaxis] + p_act.sum(axis=1, keepdims=True)
-    p_no = p_no / total.squeeze()
-    p_act = p_act / total
-
-    y_pred = np.full(len(x), no_emotion_model_idx, dtype=np.int32)
-    pa = 1.0 - p_no
-    above = pa >= tau
-    if above.any():
-        y_pred[above] = np.array([active_model_indices[int(np.argmax(p_act[i]))] for i in np.where(above)[0]])
-    return y_pred
 
 
 def main():
@@ -412,9 +302,14 @@ def main():
     parser.add_argument("--n1", type=int, default=16, help="Behavior-relevant latent dimension (use nx=n1 for decoding-only)")
     parser.add_argument("--skip-flexible", action="store_true", help="Skip flexible nonlinearity search; use fixed CzNonLin")
     parser.add_argument("--epochs", type=int, default=5000, help="Max training epochs")
-    parser.add_argument("--train-ratio", type=float, default=0.8, help="Train fraction (default 80%% train / 20%% test)")
-    parser.add_argument("--val-ratio", type=float, default=0.0, help="Val fraction (0 = no separate val; DPAD creates val from train)")
+    parser.add_argument("--train-ratio", type=float, default=0.8, help="[Override only] Train fraction when using single file (temporal split)")
+    parser.add_argument("--val-ratio", type=float, default=0.0, help="[Override only] Val fraction when using single file")
     parser.add_argument("--two-stage", action="store_true", help="Use two-stage gating: gate (no vs emotion) + emotion head on latent")
+    parser.add_argument("--smooth-window", type=int, default=None, metavar="W",
+        help="Temporal smoothing window (uniform filter on probs). E.g. 5 or 10. Default: none.")
+    parser.add_argument("--oversample", action="store_true", help="Oversample minority classes (adapts to each patient distribution)")
+    parser.add_argument("--oversample-strategy", type=str, default="median",
+        help="Oversample target: max (balance to majority), median, or float e.g. 0.5 (50%% of max). Default: median.")
     args = parser.parse_args()
 
     if args.patient_id is None and (args.neural_path is None or args.emotion_path is None):
@@ -422,41 +317,81 @@ def main():
 
     # ----- Paths -----
     config = None
+    use_calc_pred = True
     if args.patient_id is not None:
         config = _load_config(args.patient_id)
-        neural_path = config.NEURAL_PATH
-        emotion_path = config.EMOTION_PATH
+        neural_train_path = config.NEURAL_PATH
+        emotion_train_path = config.EMOTION_PATH
+        neural_test_path = config.NEURAL_PRED_PATH
+        emotion_test_path = config.EMOTION_PRED_PATH
         out_dir = Path(args.output_dir or str(PROJECT_ROOT / "output_DPAD" / config.output_dir))
     else:
-        neural_path = Path(args.neural_path)
-        emotion_path = Path(args.emotion_path)
+        neural_train_path = Path(args.neural_path)
+        emotion_train_path = Path(args.emotion_path)
+        neural_test_path = neural_train_path
+        emotion_test_path = emotion_train_path
+        use_calc_pred = False
         out_dir = Path(args.output_dir or str(PROJECT_ROOT / "output_DPAD" / "custom"))
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # ----- 1) Load data -----
-    print("[1] Loading neural and emotion data...")
-    neural, emotion, label_to_idx, idx_to_label, missing_classes = load_neural_emotion(neural_path, emotion_path)
-    nb_classes = len(idx_to_label)
-    print(f"    Neural shape: {neural.shape}, Emotion shape: {emotion.shape} ({nb_classes} classes: {sorted(idx_to_label.values())})")
-    if missing_classes:
-        print(f"    Missing emotion classes (not in this patient's data): {sorted(missing_classes)}")
-
-    # ----- 2) Split -----
-    print("[2] Train/test split...")
-    (y_train, z_train), (y_val, z_val), (y_test, z_test) = split_train_val_test(
-        neural, emotion, train_ratio=args.train_ratio, val_ratio=args.val_ratio
-    )
-    if y_val is not None:
-        print(f"    Train {y_train.shape[0]}, Val {y_val.shape[0]}, Test {y_test.shape[0]}")
+    # ----- 1) Load train and test (calc for train, pred for test; same as single_emotion) -----
+    if use_calc_pred:
+        for p, name in [(neural_train_path, "train neural"), (emotion_train_path, "train emotion"),
+                        (neural_test_path, "test neural"), (emotion_test_path, "test emotion")]:
+            if not p.exists():
+                raise FileNotFoundError(f"{name} not found: {p}")
+        print("[1] Loading neural and emotion data (calc=train, pred=test)...")
+        print("    Train: calc")
+        y_train, z_train, label_to_idx, idx_to_label, missing_classes = load_neural_emotion(
+            neural_train_path, emotion_train_path
+        )
+        nb_classes = len(idx_to_label)
+        print(f"    Train neural shape: {y_train.shape}, emotion: {z_train.shape} ({nb_classes} classes: {sorted(idx_to_label.values())})")
+        if missing_classes:
+            print(f"    Missing emotion classes in train: {sorted(missing_classes)}")
+        print("    Test: pred (same label_to_idx as train)")
+        y_test_raw, z_test, _, _, _ = load_neural_emotion(
+            neural_test_path, emotion_test_path, label_to_idx=label_to_idx
+        )
+        mask = z_test >= 0
+        if mask.sum() < len(z_test):
+            print(f"    [WARN] {(z_test < 0).sum()} test samples have labels not in train; excluding from eval")
+        y_test = y_test_raw[mask]
+        z_test = z_test[mask]
+        if len(y_test) == 0:
+            raise ValueError("No test samples after filtering (all test labels unseen in train?)")
+        print(f"    Test neural shape: {y_test.shape}, emotion: {z_test.shape}")
     else:
-        print(f"    Train {y_train.shape[0]}, Test {y_test.shape[0]} (DPAD creates val from train)")
-    # Class distribution: train vs test (orig_label -> count)
-    train_unique, train_counts = np.unique(z_train, return_counts=True)
-    test_unique, test_counts = np.unique(z_test, return_counts=True)
-    train_dist = {idx_to_label[int(k)]: int(v) for k, v in zip(train_unique, train_counts)}
-    test_dist = {idx_to_label[int(k)]: int(v) for k, v in zip(test_unique, test_counts)}
+        # Override: single file, temporal split
+        print("[1] Loading neural and emotion data (single file, temporal split)...")
+        neural, emotion, label_to_idx, idx_to_label, missing_classes = load_neural_emotion(
+            neural_train_path, emotion_train_path
+        )
+        nb_classes = len(idx_to_label)
+        print(f"    Loaded {neural.shape[0]} timepoints, {nb_classes} classes. Splitting by time (train_ratio={args.train_ratio})...")
+        (y_train, z_train), (_, _), (y_test, z_test) = split_train_val_test(
+            neural, emotion, train_ratio=args.train_ratio, val_ratio=args.val_ratio
+        )
+        print(f"    Train {y_train.shape[0]}, Test {y_test.shape[0]}")
+    train_dist = {idx_to_label[int(k)]: int(v) for k, v in zip(*np.unique(z_train, return_counts=True))}
+    test_dist = {idx_to_label[int(k)]: int(v) for k, v in zip(*np.unique(z_test, return_counts=True))}
     print(f"    Train emotion classes: {sorted(train_dist.items())} (orig_label, count)")
     print(f"    Test emotion classes:  {sorted(test_dist.items())} (orig_label, count)")
+
+    # ----- 2b) Optional oversampling (per patient distribution) -----
+    if args.oversample:
+        try:
+            strat = args.oversample_strategy
+            if strat not in ("max", "median"):
+                strat = float(strat)
+        except (ValueError, TypeError):
+            strat = "median"
+        n_before = len(z_train)
+        y_train, z_train = oversample_train(y_train, z_train, strategy=strat)
+        n_after = len(z_train)
+        new_dist = {idx_to_label[int(k)]: int(v) for k, v in zip(*np.unique(z_train, return_counts=True))}
+        print(f"    Oversampled train: {n_before} -> {n_after} (strategy={args.oversample_strategy})")
+        print(f"    Train after oversample: {sorted(new_dist.items())} (orig_label, count)")
 
     nx, n1 = args.nx, args.n1
 
@@ -490,34 +425,58 @@ def main():
             idx_to_label, label_to_idx,
         )
         if result[0] is not None:
-            gate_clf, emo_clf, active_indices, best_tau, best_scale = result
+            gate_clf, emo_clf, scaler, active_indices, best_tau, best_scale, best_dec_type = result
             z_pred_class = predict_two_stage(
-                x_pred, gate_clf, emo_clf,
+                x_pred, gate_clf, emo_clf, scaler,
                 no_emotion_model_idx, active_indices,
                 best_tau, best_scale, n_expected=len(z_test),
+                smooth_window=args.smooth_window,
             )
-            print(f"    tau={best_tau:.2f}, emotion_scale={best_scale:.2f}")
+            smooth_str = f", smooth_window={args.smooth_window}" if args.smooth_window else ""
+            print(f"    decoder={best_dec_type}, tau={best_tau:.2f}, emotion_scale={best_scale:.2f}{smooth_str}")
             joblib.dump(gate_clf, out_dir / "gate_clf.joblib")
             if emo_clf is not None:
                 joblib.dump(emo_clf, out_dir / "emo_clf.joblib")
+            joblib.dump(scaler, out_dir / "scaler.joblib")
             with open(out_dir / "two_stage_meta.json", "w") as f:
-                json.dump({
+                meta = {
+                    "decoder_type": best_dec_type,
                     "best_tau": best_tau,
                     "best_emotion_scale": best_scale,
                     "no_emotion_model_idx": no_emotion_model_idx,
                     "active_model_indices": active_indices,
-                }, f, indent=2)
+                }
+                if args.smooth_window is not None:
+                    meta["smooth_window"] = args.smooth_window
+                json.dump(meta, f, indent=2)
         else:
             print("    [WARN] Two-stage training failed; using direct DPAD predictions")
-            z_pred_class = _z_pred_to_class(z_pred)
+            z_pred_class = _z_pred_to_class(z_pred, smooth_window=args.smooth_window)
     else:
         if args.two_stage and no_emotion_model_idx is None:
             print("    [WARN] No 'no emotion' class (0) in data; --two-stage disabled")
-        z_pred_class = _z_pred_to_class(z_pred)
+        z_pred_class = _z_pred_to_class(z_pred, smooth_window=args.smooth_window)
 
     # ----- 6) Evaluate -----
     f1_macro = evaluate_decoding(z_test, z_pred_class, n_classes=nb_classes)
     print(f"[6] Test decoding macro F1: {f1_macro:.4f}")
+
+    # Per-class F1 (worst first) for class imbalance analysis
+    label_map = config.EMOTION_MAP if config else {}
+    T_eval = min(len(z_test), len(z_pred_class))
+    f1_per_class = f1_score(
+        z_test[:T_eval], z_pred_class[:T_eval],
+        average=None, labels=np.arange(nb_classes), zero_division=0
+    )
+    class_info = []
+    for i in range(nb_classes):
+        orig = idx_to_label.get(i, i)
+        name = label_map.get(int(orig), str(orig)) if label_map else str(orig)
+        class_info.append((i, orig, name, float(f1_per_class[i])))
+    class_info.sort(key=lambda x: x[3])  # sort by F1 ascending (worst first)
+    print("    Per-class F1 (worst → best):")
+    for i, orig, name, f1 in class_info:
+        print(f"      {orig} ({name}): {f1:.4f}")
 
     # Convert to original labels for interpretation (idx_to_label: model index -> original 0-9)
     z_test_original = np.array([idx_to_label.get(int(i), i) for i in z_test])
@@ -538,9 +497,7 @@ def main():
     print(f"    Saved z_pred, x_pred, z_test, z_pred_class, label_mapping.json, method_code.txt to {out_dir}")
 
     # ----- 7) Timecourse plot (same style as CEBRA) -----
-    T_total = neural.shape[0]
-    t1 = int(T_total * args.train_ratio)
-    test_idx = np.arange(t1, T_total)
+    test_idx = np.arange(len(z_test))
     df_timecourse = collect_decoding_timecourse(
         pair_name="DPAD",
         y_true=z_test_original,

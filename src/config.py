@@ -71,9 +71,38 @@ ATTRIBUTION_OUTPUT_DIR = PROJECT_ROOT / "output_xCEBRA_lags" / output_dir / "att
 # FOLD_MODELS_DIR = OUT_DIR / "fold_models" 
 # FOLDS_DIR = OUT_DIR / "folds"
 
-# File paths
+# File paths (9emotion: calc=train, pred=test, same as single_emotion)
 NEURAL_PATH = DATA_DIR / "nrcRF_calc_Stim_StimNum_5_Nr_1_msBW_1000_movHeldOut_1.mat"
 EMOTION_PATH = DATA_DIR / "nrcRF_calc_Resp_chan_1_movHeldOut_1.mat"
+NEURAL_PRED_PATH = DATA_DIR / "nrcRF_pred_Stim_StimNum_5_Nr_1_msBW_1000_movHeldOut_1.mat"
+EMOTION_PRED_PATH = DATA_DIR / "nrcRF_pred_Resp_chan_1_movHeldOut_1.mat"
+
+# Single-emotion trial-level pipeline: uses DC8 folder (separate from main DATA_DIR)
+SINGLE_EMOTION_DATA_DIR = PROJECT_ROOT / "data" / ec_code / "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC8_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC8_1   2   5   6   7   8   9  10  11  12_5"
+SINGLE_EMOTION_CALC_NEURAL = SINGLE_EMOTION_DATA_DIR / "nrcRF_calc_Stim_StimNum_5_Nr_1_msBW_1000_movHeldOut_1.mat"
+SINGLE_EMOTION_CALC_RESP = SINGLE_EMOTION_DATA_DIR / "nrcRF_calc_Resp_chan_1_movHeldOut_1.mat"
+SINGLE_EMOTION_PRED_NEURAL = SINGLE_EMOTION_DATA_DIR / "nrcRF_pred_Stim_StimNum_5_Nr_1_msBW_1000_movHeldOut_1.mat"
+SINGLE_EMOTION_PRED_RESP = SINGLE_EMOTION_DATA_DIR / "nrcRF_pred_Resp_chan_1_movHeldOut_1.mat"
+SINGLE_EMOTION_OUTPUT_DIR = PROJECT_ROOT / "output_single_emotion" / output_dir
+
+# Valence/Arousal (DC6, DC7, DC9) - EC238 and EC239 do NOT have this data
+_BASE_DC = "nrcRF_stim_resp_5_Nfold_pairs_msBW_1000_wASpec16_v16_DC{dc}_1   2   5   6   7   8   9  10  11  12__wASpec16_v16_DC{dc}_1   2   5   6   7   8   9  10  11  12_5"
+VALENCE_AROUSAL_DATA_DIR_DC6 = PROJECT_ROOT / "data" / ec_code / _BASE_DC.format(dc="6")
+VALENCE_AROUSAL_DATA_DIR_DC7 = PROJECT_ROOT / "data" / ec_code / _BASE_DC.format(dc="7")
+VALENCE_AROUSAL_DATA_DIR_DC9 = PROJECT_ROOT / "data" / ec_code / _BASE_DC.format(dc="9")
+# Valence/Arousal: calc = train, pred = test (same structure as single_emotion/9emotion)
+VALENCE_CALC_NEURAL_DC6 = VALENCE_AROUSAL_DATA_DIR_DC6 / "nrcRF_calc_Stim_StimNum_5_Nr_1_msBW_1000_movHeldOut_1.mat"
+VALENCE_CALC_RESP_DC6 = VALENCE_AROUSAL_DATA_DIR_DC6 / "nrcRF_calc_Resp_chan_1_movHeldOut_1.mat"
+VALENCE_PRED_NEURAL_DC6 = VALENCE_AROUSAL_DATA_DIR_DC6 / "nrcRF_pred_Stim_StimNum_5_Nr_1_msBW_1000_movHeldOut_1.mat"
+VALENCE_PRED_RESP_DC6 = VALENCE_AROUSAL_DATA_DIR_DC6 / "nrcRF_pred_Resp_chan_1_movHeldOut_1.mat"
+VALENCE_CALC_NEURAL_DC7 = VALENCE_AROUSAL_DATA_DIR_DC7 / "nrcRF_calc_Stim_StimNum_5_Nr_1_msBW_1000_movHeldOut_1.mat"
+VALENCE_CALC_RESP_DC7 = VALENCE_AROUSAL_DATA_DIR_DC7 / "nrcRF_calc_Resp_chan_1_movHeldOut_1.mat"
+VALENCE_PRED_NEURAL_DC7 = VALENCE_AROUSAL_DATA_DIR_DC7 / "nrcRF_pred_Stim_StimNum_5_Nr_1_msBW_1000_movHeldOut_1.mat"
+VALENCE_PRED_RESP_DC7 = VALENCE_AROUSAL_DATA_DIR_DC7 / "nrcRF_pred_Resp_chan_1_movHeldOut_1.mat"
+VALENCE_CALC_NEURAL_DC9 = VALENCE_AROUSAL_DATA_DIR_DC9 / "nrcRF_calc_Stim_StimNum_5_Nr_1_msBW_1000_movHeldOut_1.mat"
+VALENCE_CALC_RESP_DC9 = VALENCE_AROUSAL_DATA_DIR_DC9 / "nrcRF_calc_Resp_chan_1_movHeldOut_1.mat"
+VALENCE_PRED_NEURAL_DC9 = VALENCE_AROUSAL_DATA_DIR_DC9 / "nrcRF_pred_Stim_StimNum_5_Nr_1_msBW_1000_movHeldOut_1.mat"
+VALENCE_PRED_RESP_DC9 = VALENCE_AROUSAL_DATA_DIR_DC9 / "nrcRF_pred_Resp_chan_1_movHeldOut_1.mat"
 
 NEURAL_TENSOR_PATH = MODEL_DIR / "neural_tensor.pt"
 EMOTION_TENSOR_PATH = MODEL_DIR / "emotion_tensor.pt"
@@ -96,6 +125,24 @@ EVALUATION_CONFUSION_PLOT = EVALUATION_OUTPUT_DIR / "confusion_matrix.png"
 EMOTION_MAP = {
     0: "No emotion", 1: "Amusement", 2: "Embarrassment", 3: "Anger", 4: "Confused",
     5: "Awe", 6: "Disgust", 7: "Fear", 8: "Affection", 9: "Sadness"
+}
+
+# Valence/Arousal: EC238 and EC239 do NOT have this data
+PATIENTS_WITH_VALENCE_AROUSAL = [9, 27, 28, 15, 22, 24, 29, 30, 31]  # exclude 1, 2
+
+# DC6 Arousal: 0-6 scale (very calm to very activated, 3=neutral)
+AROUSAL_MAP = {0: "Very calm", 1: "Calm", 2: "Slightly calm", 3: "Neutral", 4: "Slightly activated", 5: "Activated", 6: "Very activated"}
+
+# DC7 Valence: 0-6 scale (very unpleasant to very pleasant, 3=neutral)
+VALENCE_MAP = {0: "Very unpleasant", 1: "Unpleasant", 2: "Slightly unpleasant", 3: "Neutral", 4: "Slightly pleasant", 5: "Pleasant", 6: "Very pleasant"}
+
+# DC9 Valence/Arousal Categories: 0-4 (quadrants)
+CATEGORY_MAP = {
+    0: "Neutral/Neutral",
+    1: "Unpleasant/Activated",
+    2: "Pleasant/Activated",
+    3: "Pleasant/Calm",
+    4: "Unpleasant/Calm",
 }
 
 ELECTRODE_NAMES = [

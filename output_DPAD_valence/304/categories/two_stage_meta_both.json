@@ -1,0 +1,12 @@
+{
+  "decoder_type": "svc",
+  "best_tau": 0.3,
+  "best_emotion_scale": 0.5,
+  "no_emotion_model_idx": 0,
+  "active_model_indices": [
+    1,
+    2,
+    3,
+    4
+  ]
+}

@@ -3,6 +3,48 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+
+# ===============================================================
+# Confusion Matrix Heatmap
+# ===============================================================
+def plot_confusion_matrix_heatmap(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    label_map: dict,
+    out_path: Path,
+    title: str = "Confusion Matrix",
+    cmap: str = "Blues",
+    show_all_classes: bool = True,
+):
+    """
+    Plot confusion matrix heatmap for classification results.
+
+    Args:
+        y_true: True labels (original label space, e.g. 0-6 for arousal/valence)
+        y_pred: Predicted labels (same space)
+        label_map: Dict mapping label index -> display string (e.g. AROUSAL_MAP)
+        out_path: Where to save the figure
+        title: Plot title
+        cmap: Matplotlib colormap name
+        show_all_classes: If True, use all keys from label_map so the matrix shows the full
+            scale (e.g. 7x7 for arousal) even when some classes are missing in the data.
+    """
+    if show_all_classes and label_map:
+        labels = np.array(sorted(label_map.keys()), dtype=int)
+    else:
+        labels = np.unique(np.concatenate([y_true, y_pred])).astype(int)
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
+    label_names = [label_map.get(int(l), str(l)) for l in labels]
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=label_names)
+    fig, ax = plt.subplots(figsize=(8, 7))
+    disp.plot(ax=ax, xticks_rotation=45, cmap=cmap, values_format="d")
+    ax.set_title(title)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=220, bbox_inches="tight")
+    plt.close(fig)
+    print(f"[ok] saved confusion matrix heatmap → {out_path}")
+
 
 # ===============================================================
 # Heatmap Visualization

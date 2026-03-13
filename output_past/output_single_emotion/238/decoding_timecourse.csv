@@ -1,0 +1,11 @@
+pair,timestep,actual,prediction
+single_emotion,0,7,9
+single_emotion,1,6,1
+single_emotion,2,5,1
+single_emotion,3,1,1
+single_emotion,4,0,1
+single_emotion,5,0,1
+single_emotion,6,7,1
+single_emotion,7,1,1
+single_emotion,8,0,1
+single_emotion,9,6,1
